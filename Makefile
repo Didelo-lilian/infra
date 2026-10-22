@@ -15,6 +15,7 @@ check:
 	$(TF) validate
 	$(DOCKER) --entrypoint sh ghcr.io/terraform-linters/tflint -c "tflint --init --config /repo/.tflint.hcl >/dev/null && tflint --chdir=terraform --config /repo/.tflint.hcl"
 	cd ansible && ansible-lint
+	$(DOCKER) rhysd/actionlint:1.7.12
 	gitleaks git --redact --no-banner
 
 plan apply:
