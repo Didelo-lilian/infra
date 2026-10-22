@@ -19,17 +19,15 @@ Every choice gets a short decision record in [`docs/adr/`](docs/adr/) as it is m
 
 ## Run it
 
-Requirements: Terraform ≥ 1.14, an HCP Terraform workspace in local execution mode, scoped OVH API credentials.
+Requirements: Terraform ≥ 1.14, Docker, gitleaks, the GitHub CLI, an HCP Terraform workspace in local execution mode and scoped OVH API credentials.
 
 ```bash
-export TF_CLOUD_ORGANIZATION=<organization> TF_WORKSPACE=infra
-export OVH_APPLICATION_KEY=… OVH_APPLICATION_SECRET=… OVH_CONSUMER_KEY=… GITHUB_TOKEN=…
-cd terraform
-terraform init
-terraform plan
+make check   # same checks as CI: fmt, validate, tflint, gitleaks
+make plan    # preview changes to the real infrastructure
+make apply   # apply them, after confirmation
 ```
 
-Credentials are read from the environment only and are never committed.
+`plan` and `apply` read `TF_CLOUD_ORGANIZATION`, `TF_WORKSPACE` and the OVH credentials from an env file kept outside the repo (`~/.config/didelo/ovh-terraform.env`, override with `ENV=`), and the GitHub token from `gh auth token`. Nothing secret is committed.
 
 ## How I built this
 
