@@ -15,6 +15,47 @@ My personal production platform: one VPS, everything as code, every project depl
 | CI/CD | Pull requests on GitHub-hosted runners, deploys from `main` on ephemeral self-hosted runners |
 | Secrets | SOPS + age, pushed to GitHub by Terraform |
 
+## Architecture
+
+What runs today. The diagram is updated in the same pull request as any change it shows.
+
+```mermaid
+flowchart LR
+  visitor([Visitor])
+  laptop["My laptop<br/>make server: Ansible"]
+  le["Let's Encrypt"]
+
+  subgraph ovh["OVHcloud"]
+    dns["DNS zone didelo.fr<br/>@ and * → VPS, mail locked down, CAA"]
+    subgraph vps["VPS · Ubuntu 26.04"]
+      ufw["ufw<br/>SSH, key only"]
+      traefik["Traefik v3<br/>80 → 443, HSTS, headers"]
+      proxy["socket-proxy<br/>read-only Docker API"]
+      sock[("Docker socket")]
+      hello["hello<br/>nginx, non-root"]
+    end
+  end
+
+  subgraph gh["GitHub"]
+    pr["Pull request<br/>CI: terraform, ansible, gitleaks,<br/>CodeQL, SonarQube Cloud"]
+    main["main"]
+    tfwf["Terraform workflow<br/>plan → approval → apply"]
+  end
+  hcp[("HCP Terraform<br/>state")]
+
+  visitor -->|"name lookup"| dns
+  visitor -->|"HTTP, HTTPS"| traefik
+  traefik -->|"edge network"| hello
+  traefik -->|"internal network"| proxy --> sock
+  le <-->|"TLS-ALPN-01, renewals"| traefik
+  laptop -->|"SSH"| ufw
+  pr -->|"squash merge"| main --> tfwf
+  tfwf -->|"OVH API"| dns
+  tfwf <-->|"state, lock"| hcp
+```
+
+Ports 80 and 443 are published by Docker, which writes its own firewall rules and bypasses ufw: that is why Traefik is the only container that publishes ports.
+
 Every choice gets a short decision record in [`docs/adr/`](docs/adr/) as it is made.
 
 ## Run it
