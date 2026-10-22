@@ -12,6 +12,8 @@
     - name: Let CI in with its own key only
       ansible.posix.authorized_key:
         user: ci
+        # A full path lets --check preview the key before the user exists.
+        path: /home/ci/.ssh/authorized_keys
         key: "{{ lookup('ansible.builtin.file', 'ci.pub') }}"
         exclusive: true
       tags: [ci]
