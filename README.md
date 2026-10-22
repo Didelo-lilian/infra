@@ -1,8 +1,12 @@
 # infra
 
+[![Release](https://img.shields.io/github/v/release/Didelo-lilian/infra)](https://github.com/Didelo-lilian/infra/releases)
+[![CI](https://github.com/Didelo-lilian/infra/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Didelo-lilian/infra/actions/workflows/ci.yml)
+[![License](https://img.shields.io/github/license/Didelo-lilian/infra)](LICENSE)
+
 My personal production platform: one VPS, everything as code, every project deployed to production from CI.
 
-> **Status:** getting started — weekend 1 of the [roadmap](https://github.com/orgs/Didelo-lilian/projects/1).
+> **Status:** DNS, server and HTTPS edge are live ([hello.didelo.fr](https://hello.didelo.fr)), next is monitoring. Follow the [roadmap](https://github.com/orgs/Didelo-lilian/projects/1).
 
 ## What it will run
 
@@ -99,6 +103,12 @@ Changes reach production through CI, not from a laptop: once a change to `terraf
 It is idempotent: a second run changes nothing. Like Terraform, it is applied from CI ([ADR 0005](docs/adr/0005-apply-the-server-configuration-from-ci.md)): once a change to `ansible/` or `stacks/` is merged, the **Server** workflow dry-runs it and shows the diff in the run summary, then the real run waits for an approval in `production`. CI connects as `ci` with its own key and refuses any server whose host key differs from [`ansible/known_hosts`](ansible/known_hosts).
 
 From a laptop, the playbook reaches the server through an SSH alias `didelo-vps` defined in `~/.ssh/config` (host, user `ubuntu`, key).
+
+## Changelog
+
+Versions follow [SemVer](https://semver.org) and are cut by [release-please](https://github.com/googleapis/release-please) from the Conventional Commit titles of merged pull requests. Never edited by hand:
+- [`CHANGELOG.md`](CHANGELOG.md): every release, grouped by type;
+- [Releases](https://github.com/Didelo-lilian/infra/releases): notes and tags.
 
 ## How I built this
 
