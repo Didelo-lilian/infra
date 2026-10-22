@@ -1,0 +1,90 @@
+name: Server
+
+# Every change merged to main is dry-run, then applied once approved in the production environment.
+on:
+  push:
+    branches: [main]
+    paths: [ansible/**, stacks/**, .github/workflows/server.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One run at a time, never cancelled halfway through a deploy.
+concurrency:
+  group: server
+  cancel-in-progress: false
+
+env:
+  ANSIBLE_NOCOLOR: "1"
+
+jobs:
+  diff:
+    runs-on: ubuntu-latest
+    environment: plan
+    outputs:
+      changes: ${{ steps.diff.outputs.changes }}
+    defaults:
+      run:
+        working-directory: ansible
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+      - run: pip install -q -r requirements.txt && ansible-galaxy collection install -r requirements.yml
+      # The host key is pinned in the repo: CI refuses any other server answering on didelo.fr.
+      - env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          install -m 700 -d ~/.ssh
+          (umask 077; printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/ci)
+          cat > ~/.ssh/config <<CONFIG
+          Host didelo-vps
+            HostName didelo.fr
+            HostKeyAlias didelo-vps
+            User ci
+            IdentityFile ~/.ssh/ci
+            IdentitiesOnly yes
+            StrictHostKeyChecking yes
+            UserKnownHostsFile $PWD/known_hosts
+          CONFIG
+      - id: diff
+        run: |
+          code=0; ansible-playbook site.yml --check --diff > diff.txt 2>&1 || code=$?
+          cat diff.txt
+          { echo '## Server dry run'; echo '```'; cat diff.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          changed=$(awk -F'changed=' '/changed=/ { split($2, n, " "); s += n[1] } END { print s + 0 }' diff.txt)
+          echo "changes=$([ "$changed" -gt 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          [ "$code" = 0 ]
+
+  apply:
+    needs: diff
+    if: needs.diff.outputs.changes == 'true'
+    runs-on: ubuntu-latest
+    environment: production
+    defaults:
+      run:
+        working-directory: ansible
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+      - run: pip install -q -r requirements.txt && ansible-galaxy collection install -r requirements.yml
+      - env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          install -m 700 -d ~/.ssh
+          (umask 077; printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/ci)
+          cat > ~/.ssh/config <<CONFIG
+          Host didelo-vps
+            HostName didelo.fr
+            HostKeyAlias didelo-vps
+            User ci
+            IdentityFile ~/.ssh/ci
+            IdentitiesOnly yes
+            StrictHostKeyChecking yes
+            UserKnownHostsFile $PWD/known_hosts
+          CONFIG
+      - run: ansible-playbook site.yml --diff

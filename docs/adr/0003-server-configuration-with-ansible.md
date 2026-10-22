@@ -22,5 +22,5 @@ An Ansible playbook, [`ansible/site.yml`](../../ansible/site.yml), describes the
 ## Consequences
 
 - The server can be rebuilt from a fresh Ubuntu image with one command, and a second run changes nothing.
-- It runs from my laptop for now. Running it from CI would need an SSH key in the `production` environment, which can come later.
+- It runs from my laptop at first; [ADR 0005](0005-apply-the-server-configuration-from-ci.md) moves it to CI.
 - The `deploy` user is in the `docker` group, which is equivalent to root on this host: it must never get a password or a key with more reach than deploys need.
