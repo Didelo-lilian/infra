@@ -63,6 +63,33 @@
           Unattended-Upgrade::Automatic-Reboot-Time "04:00";
         mode: "0644" # NOSONAR apt also reads its config as a regular user
 
+    - name: Look up the docker group
+      ansible.builtin.getent:
+        database: group
+        key: docker
+
+    - name: Copy the stacks
+      ansible.builtin.copy:
+        src: ../stacks/
+        dest: /srv/stacks/
+        mode: u=rwX,g=rX,o=rX # NOSONAR public files from this repo, read by containers running as non-root
+        directory_mode: "0755" # NOSONAR same as above
+
+    - name: Give the socket proxy the docker group
+      ansible.builtin.copy:
+        dest: /srv/stacks/traefik/.env
+        content: "DOCKER_GID={{ ansible_facts.getent_group.docker[1] }}\n"
+        mode: "0600"
+
+    - name: Start the stacks
+      community.docker.docker_compose_v2:
+        project_src: /srv/stacks/{{ item }}
+        remove_orphans: true
+      # Traefik first: it creates the edge network the other stacks join.
+      loop: [traefik, hello]
+      # In --check mode the stacks are not really copied yet.
+      ignore_errors: "{{ ansible_check_mode }}"
+
   handlers:
     - name: Reload ssh
       ansible.builtin.service:

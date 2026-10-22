@@ -10,7 +10,7 @@ My personal production platform: one VPS, everything as code, every project depl
 |---|---|
 | Server | OVHcloud VPS, configured and hardened by an Ansible playbook |
 | DNS | `didelo.fr` zone fully managed by Terraform |
-| Edge | Traefik v3, HTTPS everywhere, wildcard certificate, WAF and anti-bot |
+| Edge | Traefik v3, HTTPS everywhere with automatically renewed Let's Encrypt certificates, WAF and anti-bot |
 | Observability | Prometheus, Grafana, one uptime probe per project, public status page |
 | CI/CD | Pull requests on GitHub-hosted runners, deploys from `main` on ephemeral self-hosted runners |
 | Secrets | SOPS + age, pushed to GitHub by Terraform |
@@ -41,6 +41,15 @@ Changes reach production through CI, not from a laptop: once a change to `terraf
 - a `deploy` user;
 - a firewall that only lets SSH, HTTP and HTTPS in;
 - automatic security updates, with a reboot at 04:00 UTC when one needs it.
+- the Docker stacks in [`stacks/`](stacks/), started with Docker Compose.
+
+### The edge
+
+[`stacks/traefik`](stacks/traefik/compose.yaml) runs Traefik, the only container that publishes ports ([ADR 0004](docs/adr/0004-traefik-with-tls-challenge.md)):
+- HTTP redirects to HTTPS, and every response carries HSTS and security headers;
+- certificates come from Let's Encrypt through the TLS-ALPN-01 challenge and are renewed automatically, with no DNS credentials on the server;
+- Traefik reads containers through a socket proxy that only allows listing them, never the Docker socket itself;
+- an app is published by adding the `traefik.enable` label and a `Host()` rule, as [`stacks/hello`](stacks/hello/compose.yaml) does for https://hello.didelo.fr.
 
 It is idempotent: a second run changes nothing. It reaches the server through an SSH alias `didelo-vps` defined in `~/.ssh/config` (host, user `ubuntu`, key).
 

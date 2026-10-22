@@ -1,0 +1,20 @@
+name: hello
+
+services:
+  hello:
+    image: nginxinc/nginx-unprivileged:1.30.6-alpine
+    restart: unless-stopped
+    volumes:
+      - ./html:/usr/share/nginx/html:ro
+    tmpfs: [/tmp]
+    networks: [edge]
+    read_only: true
+    security_opt: [no-new-privileges:true]
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.hello.rule: Host(`hello.didelo.fr`)
+      traefik.http.services.hello.loadbalancer.server.port: "8080"
+
+networks:
+  edge:
+    external: true
