@@ -66,7 +66,7 @@ Every choice gets a short decision record in [`docs/adr/`](docs/adr/) as it is m
 Requirements: Terraform ≥ 1.14, Ansible with ansible-lint, Docker, gitleaks, the GitHub CLI, an HCP Terraform workspace in local execution mode and scoped OVH API credentials.
 
 ```bash
-make check         # same checks as CI: fmt, validate, tflint, ansible-lint, gitleaks
+make check         # same checks as CI: fmt, validate, tflint, ansible-lint, actionlint, gitleaks
 make plan          # preview changes to the real infrastructure
 make apply         # apply them, after confirmation
 make server-diff   # preview the server configuration (dry run)
