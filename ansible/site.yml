@@ -10,7 +10,7 @@
       - ../stacks/monitoring/blackbox/blackbox.yml
       - ../stacks/monitoring/grafana/provisioning/datasources/prometheus.yml
       - ../stacks/monitoring/grafana/provisioning/dashboards/dashboards.yml
-      - ../stacks/monitoring/grafana/dashboards/status.json
+      - ../stacks/monitoring/grafana/dashboards/overview.json
   tasks:
     # The only tasks a first run from a laptop needs (--tags ci): after that, CI applies everything.
     - name: Create the CI user

@@ -60,19 +60,20 @@ services:
     labels:
       config.hash: ${CONFIG_HASH}
 
-  # Public, read-only status page: anonymous viewers, no login form, no admin user.
+  # My view of the metrics, reachable through an SSH tunnel only (ssh -L 3000:localhost:3000 didelo-vps).
+  # The public status page lives outside this server: a page hosted here would go down with it.
   # Datasources and dashboards come from files, so every change goes through git.
   grafana:
     <<: *hardened
     image: grafana/grafana:13.2.4
+    ports:
+      - 127.0.0.1:3000:3000
     environment:
-      GF_SERVER_ROOT_URL: https://status.didelo.fr
       GF_AUTH_ANONYMOUS_ENABLED: "true"
       GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
       GF_AUTH_DISABLE_LOGIN_FORM: "true"
       GF_AUTH_BASIC_ENABLED: "false"
       GF_SECURITY_DISABLE_INITIAL_ADMIN_CREATION: "true"
-      GF_SECURITY_COOKIE_SECURE: "true"
       GF_SECURITY_DISABLE_GRAVATAR: "true"
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_SNAPSHOTS_EXTERNAL_ENABLED: "false"
@@ -80,19 +81,16 @@ services:
       GF_ANALYTICS_REPORTING_ENABLED: "false"
       GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
       GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
-      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/dashboards/status.json
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/dashboards/overview.json
       GF_DASHBOARDS_MIN_REFRESH_INTERVAL: 30s
     volumes:
       - grafana-data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
       - ./grafana/dashboards:/etc/grafana/dashboards:ro
-    networks: [edge, monitoring]
+    networks: [monitoring]
     mem_limit: 384m
     labels:
       config.hash: ${CONFIG_HASH}
-      traefik.enable: "true"
-      traefik.http.routers.status.rule: Host(`status.didelo.fr`)
-      traefik.http.services.status.loadbalancer.server.port: "3000"
 
 secrets:
   smtp_password:
@@ -104,6 +102,4 @@ volumes:
   grafana-data:
 
 networks:
-  edge:
-    external: true
   monitoring:

@@ -1,8 +1,8 @@
 {
-  "uid": "status",
-  "title": "didelo.fr status",
+  "uid": "overview",
+  "title": "Platform overview",
   "tags": [
-    "status"
+    "overview"
   ],
   "timezone": "browser",
   "editable": false,

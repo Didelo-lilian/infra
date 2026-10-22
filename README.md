@@ -37,7 +37,7 @@ flowchart LR
       proxy["socket-proxy<br/>read-only Docker API"]
       sock[("Docker socket")]
       hello["hello<br/>nginx, non-root"]
-      graf["Grafana<br/>status.didelo.fr, read-only"]
+      graf["Grafana<br/>SSH tunnel only"]
       prom["Prometheus + blackbox<br/>30 days of metrics"]
       alert["Alertmanager"]
     end
@@ -48,21 +48,21 @@ flowchart LR
     main["main"]
     tfwf["Terraform workflow<br/>plan → approval → apply"]
     srvwf["Server workflow<br/>dry run → approval → Ansible"]
-    uptime["Uptime workflow<br/>probe every 15 min"]
   end
   hcp[("HCP Terraform<br/>state")]
+  statusrepo["status repository<br/>probe every 15 min, GitHub Pages"]
   inbox(["My inbox"])
 
   visitor -->|"name lookup"| dns
   visitor -->|"HTTP, HTTPS"| traefik
   traefik -->|"edge network"| hello
-  traefik -->|"edge network"| graf
   graf --> prom
   prom -->|"probes the public URLs"| traefik
   prom -->|"alert rules"| alert
   alert -->|"SMTP"| inbox
-  uptime -->|"HTTPS from outside"| traefik
-  uptime -.->|"failed run"| inbox
+  statusrepo -->|"HTTPS from outside"| traefik
+  statusrepo -.->|"failed run"| inbox
+  visitor -->|"status.didelo.fr"| statusrepo
   traefik -->|"internal network"| proxy --> sock
   le <-->|"TLS-ALPN-01, renewals"| traefik
   laptop -->|"SSH"| ufw
@@ -78,8 +78,8 @@ flowchart LR
 [`stacks/monitoring`](stacks/monitoring/compose.yaml) ([ADR 0006](docs/adr/0006-monitoring-and-public-status-page.md)):
 - **Prometheus** scrapes the server (node-exporter) and, through a **blackbox exporter**, probes every public URL as a visitor would: availability, latency and certificate expiry. Alert rules live in [`rules.yml`](stacks/monitoring/prometheus/rules.yml) and are unit-tested.
 - **Alertmanager** emails the alerts through a Gmail SMTP relay, so `didelo.fr` itself still sends no mail.
-- **Grafana** at https://status.didelo.fr is a public, read-only status page: anonymous viewers, no login, no admin user. The dashboard and datasource are provisioned from files, so a change goes through a pull request.
-- A scheduled [Uptime workflow](.github/workflows/uptime.yml) probes the site from GitHub, because a server that is down cannot report it.
+- **Grafana** is my detailed view, reachable through an SSH tunnel only. Its datasource and dashboard are provisioned from files, so a change goes through a pull request.
+- The **public status page** is https://status.didelo.fr, served by GitHub Pages from the [status repository](https://github.com/Didelo-lilian/status), which also probes the site from outside every 15 minutes. A status page hosted on the server it watches would go down with it.
 
 Ports 80 and 443 are published by Docker, which writes its own firewall rules and bypasses ufw: that is why Traefik is the only container that publishes ports.
 
