@@ -7,13 +7,13 @@
       ansible.builtin.file:
         path: /etc/docker
         state: directory
-        mode: "0755"
+        mode: "0700"
 
     - name: Rotate container logs
       ansible.builtin.copy:
         dest: /etc/docker/daemon.json
         content: '{ "log-driver": "local" }'
-        mode: "0644"
+        mode: "0600"
       notify: Restart docker
 
     - name: Install packages
@@ -31,7 +31,7 @@
           PasswordAuthentication no
           KbdInteractiveAuthentication no
           PermitRootLogin no
-        mode: "0644"
+        mode: "0600"
         validate: /usr/sbin/sshd -t -f %s
       notify: Reload ssh
 
@@ -61,7 +61,7 @@
         content: |
           Unattended-Upgrade::Automatic-Reboot "true";
           Unattended-Upgrade::Automatic-Reboot-Time "04:00";
-        mode: "0644"
+        mode: "0644" # NOSONAR apt also reads its config as a regular user
 
   handlers:
     - name: Reload ssh
