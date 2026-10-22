@@ -24,6 +24,15 @@ jobs:
       - run: tflint --init --config "$GITHUB_WORKSPACE/.tflint.hcl"
       - run: tflint --config "$GITHUB_WORKSPACE/.tflint.hcl"
 
+  ansible:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ansible/ansible-lint@9bce2bfb8f4a984e6b13767bc0d6bf0a49492164 # v26.10.1
+        with:
+          working_directory: ansible
+          requirements_file: requirements.yml
+
   secrets:
     runs-on: ubuntu-latest
     steps:
