@@ -22,4 +22,4 @@ The same pipeline as Terraform. On every push to `main` that touches `ansible/` 
 - Every deploy is tied to a merged commit, a dry run and an approval.
 - The `ci` user has passwordless sudo, which Ansible needs: the key is as powerful as root. Revoking it means deleting the secret and removing `ci.pub`.
 - `--diff` prints file contents in a public run summary: any task that ever handles a secret must set `no_log: true`.
-- Ansible and its collections are pinned (`requirements.txt`, `requirements.yml`) so CI and my laptop run the same versions. Dependabot bumps the pip pin.
+- Ansible is locked with hashes for every transitive dependency (`requirements.in` compiled to `requirements.txt`), installed from wheels only, so no package can run setup code on the runner. Dependabot keeps the lock up to date. Collections are pinned to exact versions in `requirements.yml`.
