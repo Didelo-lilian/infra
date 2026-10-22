@@ -1,12 +1,13 @@
 # Local entry points: `make check` runs the same checks as CI, `make plan` and `make apply` act on the real infra,
-# `make server-diff` previews the server configuration and `make server` applies it.
+# `make server-diff` previews the server configuration and `make server` applies it (CI does both on main);
+# `make server-bootstrap` only creates the CI user, once per fresh server.
 # OVH and HCP Terraform settings come from $(ENV); the GitHub token comes from the gh CLI. Nothing is stored here.
 ENV ?= $(HOME)/.config/didelo/ovh-terraform.env
 TF = terraform -chdir=terraform
 PLAYBOOK = cd ansible && ansible-playbook site.yml --diff
 DOCKER = docker run --rm -v "$(CURDIR):/repo" -w /repo
 
-.PHONY: check plan apply server-diff server
+.PHONY: check plan apply server-diff server server-bootstrap
 
 check:
 	$(TF) fmt -check -recursive
@@ -24,3 +25,6 @@ server-diff:
 
 server:
 	$(PLAYBOOK)
+
+server-bootstrap:
+	$(PLAYBOOK) --tags ci
