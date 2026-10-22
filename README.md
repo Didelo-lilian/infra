@@ -27,7 +27,9 @@ make plan    # preview changes to the real infrastructure
 make apply   # apply them, after confirmation
 ```
 
-`plan` and `apply` read `TF_CLOUD_ORGANIZATION`, `TF_WORKSPACE` and the OVH credentials from an env file kept outside the repo (`~/.config/didelo/ovh-terraform.env`, override with `ENV=`), and the GitHub token from `gh auth token`. Nothing secret is committed.
+Changes reach production through CI, not from a laptop: once a change to `terraform/` is merged to `main`, the **Terraform** workflow plans it and shows the plan in the run summary, then the apply waits for a manual approval in the protected `production` environment ([ADR 0002](docs/adr/0002-apply-from-ci-with-approval.md)).
+
+`make plan` and `make apply` remain for local previews and emergencies. They read `TF_CLOUD_ORGANIZATION`, `TF_WORKSPACE` and the OVH credentials from an env file kept outside the repo (override its path with `ENV=`), and the GitHub token from `gh auth token`. Nothing secret is committed.
 
 ## How I built this
 

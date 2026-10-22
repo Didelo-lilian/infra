@@ -1,0 +1,73 @@
+name: Terraform
+
+# Every change merged to main is planned, then applied once approved in the production environment.
+on:
+  push:
+    branches: [main]
+    paths: [terraform/**, .github/workflows/terraform.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One run at a time, never cancelled halfway through an apply.
+concurrency:
+  group: terraform
+  cancel-in-progress: false
+
+env:
+  TF_CLOUD_ORGANIZATION: didelo
+  TF_WORKSPACE: infra
+  TF_IN_AUTOMATION: "true"
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    environment: plan
+    outputs:
+      changes: ${{ steps.plan.outputs.changes }}
+    defaults:
+      run:
+        working-directory: terraform
+    steps:
+      - uses: actions/checkout@v7
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
+          terraform_wrapper: false
+      - run: terraform init -input=false
+      - id: plan
+        env:
+          OVH_APPLICATION_KEY: ${{ secrets.OVH_APPLICATION_KEY }}
+          OVH_APPLICATION_SECRET: ${{ secrets.OVH_APPLICATION_SECRET }}
+          OVH_CONSUMER_KEY: ${{ secrets.OVH_CONSUMER_KEY }}
+          GITHUB_TOKEN: ${{ github.token }}
+        # -detailed-exitcode: 0 = nothing to do, 1 = error, 2 = changes to apply.
+        run: |
+          code=0; terraform plan -input=false -no-color -detailed-exitcode > plan.txt || code=$?
+          cat plan.txt
+          { echo '## Terraform plan'; echo '```'; cat plan.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          echo "changes=$([ "$code" = 2 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          [ "$code" != 1 ]
+
+  apply:
+    needs: plan
+    if: needs.plan.outputs.changes == 'true'
+    runs-on: ubuntu-latest
+    environment: production
+    defaults:
+      run:
+        working-directory: terraform
+    steps:
+      - uses: actions/checkout@v7
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
+          terraform_wrapper: false
+      - run: terraform init -input=false
+      - env:
+          OVH_APPLICATION_KEY: ${{ secrets.OVH_APPLICATION_KEY }}
+          OVH_APPLICATION_SECRET: ${{ secrets.OVH_APPLICATION_SECRET }}
+          OVH_CONSUMER_KEY: ${{ secrets.OVH_CONSUMER_KEY }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: terraform apply -input=false -no-color -auto-approve
