@@ -1,0 +1,4 @@
+all:
+  hosts:
+    # SSH alias from ~/.ssh/config: user ubuntu, key only (see the README).
+    didelo-vps:
