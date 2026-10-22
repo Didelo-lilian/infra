@@ -1,0 +1,16 @@
+http:
+  middlewares:
+    security-headers:
+      headers:
+        # One year, no preload: preloading is hard to undo.
+        stsSeconds: 31536000
+        stsIncludeSubdomains: true
+        contentTypeNosniff: true
+        frameDeny: true
+        referrerPolicy: strict-origin-when-cross-origin
+
+tls:
+  options:
+    default:
+      minVersion: VersionTLS12
+      sniStrict: true

@@ -1,0 +1,60 @@
+name: traefik
+
+services:
+  traefik:
+    image: traefik:v3.7.16
+    restart: unless-stopped
+    command:
+      - --global.checkNewVersion=false
+      - --global.sendAnonymousUsage=false
+      - --providers.docker.endpoint=tcp://socket-proxy:2375
+      - --providers.docker.exposedByDefault=false
+      - --providers.docker.network=edge
+      - --providers.file.directory=/etc/traefik/dynamic
+      - --entryPoints.web.address=:80
+      - --entryPoints.web.http.redirections.entryPoint.to=websecure
+      - --entryPoints.web.http.redirections.entryPoint.scheme=https
+      - --entryPoints.websecure.address=:443
+      - --entryPoints.websecure.http.tls.certResolver=letsencrypt
+      - --entryPoints.websecure.http.middlewares=security-headers@file
+      # TLS-ALPN-01 on port 443: no DNS credentials on the server. Traefik renews 30 days before expiry.
+      - --certificatesResolvers.letsencrypt.acme.tlsChallenge=true
+      - --certificatesResolvers.letsencrypt.acme.storage=/certs/acme.json
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - certs:/certs
+      # The whole directory, not single files: Ansible replaces files atomically, which a file mount would miss.
+      - ./dynamic:/etc/traefik/dynamic:ro
+    networks: [edge, socket]
+    depends_on: [socket-proxy]
+    read_only: true
+    security_opt: [no-new-privileges:true]
+
+  # Traefik never touches the Docker socket: this proxy only lets it list containers and follow events.
+  socket-proxy:
+    image: wollomatic/socket-proxy:1.13.1
+    restart: unless-stopped
+    user: "65534:${DOCKER_GID}"
+    command:
+      - -listenip=0.0.0.0
+      - -allowfrom=traefik
+      - -allowGET=/v1\..{1,2}/(version|containers/.*|events.*)
+      - -allowHEAD=/_ping
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks: [socket]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 64M
+
+volumes:
+  certs:
+
+networks:
+  edge:
+    name: edge
+  socket:
+    internal: true
