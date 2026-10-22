@@ -1,0 +1,109 @@
+name: monitoring
+
+x-hardened: &hardened
+  restart: unless-stopped
+  security_opt: [no-new-privileges:true]
+  cap_drop: [ALL]
+
+# CONFIG_HASH changes when a mounted config file does, which makes Compose recreate the containers:
+# it does not notice by itself that a bind-mounted file changed.
+services:
+  prometheus:
+    <<: *hardened
+    image: prom/prometheus:v3.15.1
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=30d
+    volumes:
+      - prometheus-data:/prometheus
+      - ./prometheus:/etc/prometheus:ro
+    networks: [monitoring]
+    mem_limit: 512m
+    labels:
+      config.hash: ${CONFIG_HASH}
+
+  blackbox:
+    <<: *hardened
+    image: prom/blackbox-exporter:v0.29.1
+    command: [--config.file=/config/blackbox.yml]
+    volumes:
+      - ./blackbox:/config:ro
+    networks: [monitoring]
+    mem_limit: 64m
+    labels:
+      config.hash: ${CONFIG_HASH}
+
+  node-exporter:
+    <<: *hardened
+    image: prom/node-exporter:v1.12.1
+    command: [--path.rootfs=/host]
+    # shortcut: not on the host network, so no per-interface network metrics, upgrade if they are needed.
+    pid: host
+    volumes:
+      - /:/host:ro,rslave
+    networks: [monitoring]
+    mem_limit: 64m
+
+  alertmanager:
+    <<: *hardened
+    image: prom/alertmanager:v0.34.1
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+    volumes:
+      - alertmanager-data:/alertmanager
+      - ./alertmanager:/etc/alertmanager:ro
+    secrets: [smtp_password]
+    networks: [monitoring]
+    mem_limit: 64m
+    labels:
+      config.hash: ${CONFIG_HASH}
+
+  # Public, read-only status page: anonymous viewers, no login form, no admin user.
+  # Datasources and dashboards come from files, so every change goes through git.
+  grafana:
+    <<: *hardened
+    image: grafana/grafana:13.2.4
+    environment:
+      GF_SERVER_ROOT_URL: https://status.didelo.fr
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_AUTH_BASIC_ENABLED: "false"
+      GF_SECURITY_DISABLE_INITIAL_ADMIN_CREATION: "true"
+      GF_SECURITY_COOKIE_SECURE: "true"
+      GF_SECURITY_DISABLE_GRAVATAR: "true"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SNAPSHOTS_EXTERNAL_ENABLED: "false"
+      GF_EXPLORE_ENABLED: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/dashboards/status.json
+      GF_DASHBOARDS_MIN_REFRESH_INTERVAL: 30s
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/etc/grafana/dashboards:ro
+    networks: [edge, monitoring]
+    mem_limit: 384m
+    labels:
+      config.hash: ${CONFIG_HASH}
+      traefik.enable: "true"
+      traefik.http.routers.status.rule: Host(`status.didelo.fr`)
+      traefik.http.services.status.loadbalancer.server.port: "3000"
+
+secrets:
+  smtp_password:
+    file: ./secrets/smtp_password
+
+volumes:
+  prometheus-data:
+  alertmanager-data:
+  grafana-data:
+
+networks:
+  edge:
+    external: true
+  monitoring:

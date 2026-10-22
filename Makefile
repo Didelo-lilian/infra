@@ -7,9 +7,19 @@ TF = terraform -chdir=terraform
 PLAYBOOK = cd ansible && ansible-playbook site.yml --diff
 DOCKER = docker run --rm -v "$(CURDIR):/repo" -w /repo
 
-.PHONY: check plan apply server-diff server server-bootstrap
+.PHONY: check check-monitoring plan apply server-diff server server-bootstrap
 
-check:
+# Images come from the compose file, so Dependabot bumps the checks along with the stack.
+MONITORING = stacks/monitoring
+PROMTOOL = $(DOCKER) --entrypoint promtool -w /etc/prometheus -v "$(CURDIR)/$(MONITORING)/prometheus:/etc/prometheus:ro" $$(docker compose -f $(MONITORING)/compose.yaml config --images | grep prom/prometheus)
+BLACKBOX = $(DOCKER) -v "$(CURDIR)/$(MONITORING)/blackbox:/config:ro" $$(docker compose -f $(MONITORING)/compose.yaml config --images | grep blackbox)
+
+check-monitoring:
+	$(PROMTOOL) check config prometheus.yml
+	$(PROMTOOL) test rules rules_test.yml
+	$(BLACKBOX) --config.check --config.file=/config/blackbox.yml
+
+check: check-monitoring
 	$(TF) fmt -check -recursive
 	$(TF) init -backend=false -input=false >/dev/null
 	$(TF) validate

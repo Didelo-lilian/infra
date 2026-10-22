@@ -1,6 +1,16 @@
 - name: Configure the VPS
   hosts: all
   become: true
+  vars:
+    alert_email: "{{ lookup('ansible.builtin.env', 'ALERT_EMAIL') }}"
+    # Files whose content restarts the monitoring containers: Compose does not notice a bind-mounted file changing.
+    monitoring_configs:
+      - ../stacks/monitoring/prometheus/prometheus.yml
+      - ../stacks/monitoring/prometheus/rules.yml
+      - ../stacks/monitoring/blackbox/blackbox.yml
+      - ../stacks/monitoring/grafana/provisioning/datasources/prometheus.yml
+      - ../stacks/monitoring/grafana/provisioning/dashboards/dashboards.yml
+      - ../stacks/monitoring/grafana/dashboards/status.json
   tasks:
     # The only tasks a first run from a laptop needs (--tags ci): after that, CI applies everything.
     - name: Create the CI user
@@ -105,12 +115,72 @@
         content: "DOCKER_GID={{ ansible_facts.getent_group.docker[1] }}\n"
         mode: "0600"
 
+    - name: Check the alert settings
+      ansible.builtin.assert:
+        that: alert_email | length > 0
+        fail_msg: Set the ALERT_EMAIL repository variable, it is where Alertmanager sends alerts.
+        quiet: true
+
+    - name: Check the SMTP password
+      ansible.builtin.assert:
+        that: lookup('ansible.builtin.env', 'SMTP_PASSWORD') | length > 0
+        fail_msg: Add the SMTP_PASSWORD secret to the production environment.
+        quiet: true
+      # shortcut: the dry run has no secret, so the password is only checked and written for real.
+      # A rotation does not show in the diff: run the workflow by hand with `force`.
+      when: not ansible_check_mode
+
+    - name: Create the monitoring directories
+      ansible.builtin.file:
+        path: /srv/stacks/monitoring/{{ item.path }}
+        state: directory
+        owner: root
+        group: "{{ item.group }}"
+        mode: "{{ item.mode }}"
+      loop:
+        - { path: alertmanager, group: "65534", mode: "0750" }
+        - { path: secrets, group: root, mode: "0700" }
+
+    # Group 65534 is `nobody`, the user the Alertmanager image runs as.
+    - name: Render the Alertmanager config
+      ansible.builtin.template:
+        src: alertmanager.yml.j2
+        dest: /srv/stacks/monitoring/alertmanager/alertmanager.yml
+        owner: root
+        group: "65534"
+        mode: "0640"
+      # The run summary is public and the config holds the address.
+      diff: false
+
+    - name: Store the SMTP password for Alertmanager
+      ansible.builtin.copy:
+        dest: /srv/stacks/monitoring/secrets/smtp_password
+        content: "{{ lookup('ansible.builtin.env', 'SMTP_PASSWORD') }}"
+        owner: root
+        group: "65534"
+        mode: "0440"
+      no_log: true
+      when: not ansible_check_mode
+
+    - name: Write the monitoring settings
+      ansible.builtin.copy:
+        dest: /srv/stacks/monitoring/.env
+        content: "CONFIG_HASH={{ config_hash }}\n"
+        owner: root
+        group: root
+        mode: "0600"
+      vars:
+        config_hash: >-
+          {{ (query('ansible.builtin.file', *monitoring_configs)
+          + [lookup('ansible.builtin.template', 'alertmanager.yml.j2')]) | join | hash('sha1') }}
+      diff: false
+
     - name: Start the stacks
       community.docker.docker_compose_v2:
         project_src: /srv/stacks/{{ item }}
         remove_orphans: true
       # Traefik first: it creates the edge network the other stacks join.
-      loop: [traefik, hello]
+      loop: [traefik, hello, monitoring]
       # In --check mode the stacks are not really copied yet.
       ignore_errors: "{{ ansible_check_mode }}"
 
