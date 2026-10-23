@@ -1,0 +1,10 @@
+modules:
+  http_2xx:
+    prober: http
+    timeout: 10s
+    http:
+      method: GET
+      fail_if_not_ssl: true
+      # The AAAA record exists, but the default Docker bridge has no IPv6.
+      preferred_ip_protocol: ip4
+      ip_protocol_fallback: false

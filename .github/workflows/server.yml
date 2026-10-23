@@ -6,6 +6,11 @@ on:
     branches: [main]
     paths: [ansible/**, stacks/**, .github/workflows/server.yml]
   workflow_dispatch:
+    inputs:
+      force:
+        description: Apply even when the dry run shows no change, to roll out a rotated secret
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -52,6 +57,8 @@ jobs:
             UserKnownHostsFile $PWD/known_hosts
           CONFIG
       - id: diff
+        env:
+          ALERT_EMAIL: ${{ vars.ALERT_EMAIL }}
         run: |
           code=0; ansible-playbook site.yml --check --diff > diff.txt 2>&1 || code=$?
           cat diff.txt
@@ -62,7 +69,7 @@ jobs:
 
   apply:
     needs: diff
-    if: needs.diff.outputs.changes == 'true'
+    if: needs.diff.outputs.changes == 'true' || inputs.force
     runs-on: ubuntu-latest
     environment: production
     defaults:
@@ -91,4 +98,7 @@ jobs:
             StrictHostKeyChecking yes
             UserKnownHostsFile $PWD/known_hosts
           CONFIG
-      - run: ansible-playbook site.yml --diff
+      - env:
+          ALERT_EMAIL: ${{ vars.ALERT_EMAIL }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+        run: ansible-playbook site.yml --diff

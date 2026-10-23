@@ -1,0 +1,26 @@
+rule_files:
+  - rules.yml
+
+evaluation_interval: 30s
+
+tests:
+  - interval: 30s
+    input_series:
+      - series: 'probe_success{job="probe-http", instance="https://example.test"}'
+        values: "1 1 1 0 0 0 0 0 0 0"
+      - series: 'probe_ssl_earliest_cert_expiry{job="probe-http", instance="https://example.test"}'
+        values: "172800+0x9"
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: SiteDown
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: SiteDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: probe-http
+              instance: https://example.test
+            exp_annotations:
+              summary: "https://example.test is down"
+              description: "The probe for https://example.test has failed for 2 minutes."
