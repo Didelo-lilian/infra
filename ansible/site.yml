@@ -217,7 +217,7 @@
       vars:
         bouncer_key: "{{ (lookup('community.sops.sops', playbook_dir ~ '/../secrets/production.sops.yaml') | from_yaml).CROWDSEC_BOUNCER_KEY }}"
       no_log: true
-      # shortcut: same as the SMTP password (the key is only read once `when` allows it), the dry run has no age key and a rotation needs the workflow run with `force`.
+      # shortcut: same as the SMTP password, the dry run has no age key and a rotation needs the workflow run with `force`.
       when: not ansible_check_mode
 
     - name: Create the monitoring directories
