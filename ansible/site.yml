@@ -195,6 +195,31 @@
         config_hash: "{{ query('ansible.builtin.file', *crowdsec_configs) | join | hash('sha1') }}"
       diff: false
 
+    - name: Create the Traefik secrets directory
+      ansible.builtin.file:
+        path: /srv/stacks/traefik/secrets
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
+    # One key, two readers: Traefik's bouncer sends it, CrowdSec registers it as a bouncer at startup.
+    - name: Store the CrowdSec bouncer key
+      ansible.builtin.copy:
+        dest: "{{ item.dest }}"
+        content: "{{ item.content }}"
+        owner: root
+        group: root
+        mode: "0600"
+      loop:
+        - { dest: /srv/stacks/traefik/secrets/crowdsec_bouncer_key, content: "{{ bouncer_key }}" }
+        - { dest: /srv/stacks/crowdsec/bouncer.env, content: "BOUNCER_KEY_TRAEFIK={{ bouncer_key }}\n" }
+      vars:
+        bouncer_key: "{{ (lookup('community.sops.sops', playbook_dir ~ '/../secrets/production.sops.yaml') | from_yaml).CROWDSEC_BOUNCER_KEY }}"
+      no_log: true
+      # shortcut: same as the SMTP password, the dry run has no age key and a rotation needs the workflow run with `force`.
+      when: not ansible_check_mode
+
     - name: Create the monitoring directories
       ansible.builtin.file:
         path: /srv/stacks/monitoring/{{ item.path }}

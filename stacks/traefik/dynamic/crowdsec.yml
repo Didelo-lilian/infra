@@ -1,0 +1,14 @@
+http:
+  middlewares:
+    crowdsec:
+      plugin:
+        bouncer:
+          enabled: true
+          # Stream: the banned IPs are pulled every minute into a local cache, a request never waits for CrowdSec.
+          crowdsecMode: stream
+          crowdsecLapiHost: crowdsec:8080
+          crowdsecLapiKeyFile: /run/secrets/crowdsec_bouncer_key
+          # Fail open: the plugin blocks everything by default when CrowdSec is down or still starting.
+          # A security tool that can take the sites down is worse than the attacks it stops.
+          updateMaxFailure: -1
+          streamStartupBlock: false

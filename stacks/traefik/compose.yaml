@@ -16,7 +16,11 @@ services:
       - --entryPoints.web.http.redirections.entryPoint.scheme=https
       - --entryPoints.websecure.address=:443
       - --entryPoints.websecure.http.tls.certResolver=letsencrypt
-      - --entryPoints.websecure.http.middlewares=security-headers@file
+      # The bouncer comes first: a banned IP gets its 403 before anything else runs.
+      - --entryPoints.websecure.http.middlewares=crowdsec@file,security-headers@file
+      # The plugin is downloaded at startup and cached in the plugins volume.
+      - --experimental.plugins.bouncer.moduleName=github.com/maxlerebourg/crowdsec-bouncer-traefik-plugin
+      - --experimental.plugins.bouncer.version=v1.8.1
       # TLS-ALPN-01 on port 443: no DNS credentials on the server. Traefik renews 30 days before expiry.
       - --certificatesResolvers.letsencrypt.acme.tlsChallenge=true
       - --certificatesResolvers.letsencrypt.acme.storage=/certs/acme.json
@@ -31,11 +35,15 @@ services:
       - "443:443"
     volumes:
       - certs:/certs
+      # Without it a restart needs the plugin catalog to be reachable, and Traefik does not start without the plugin.
+      - plugins:/plugins-storage
+      # The directory, like dynamic/: the bouncer key is a file in it.
+      - ./secrets:/run/secrets:ro
       # On the host, so that CrowdSec reads it and logrotate rotates it.
       - ./logs:/var/log/traefik
       # The whole directory, not single files: Ansible replaces files atomically, which a file mount would miss.
       - ./dynamic:/etc/traefik/dynamic:ro
-    networks: [edge, socket]
+    networks: [edge, socket, crowdsec]
     depends_on: [socket-proxy]
     read_only: true
     security_opt: [no-new-privileges:true]
@@ -60,9 +68,13 @@ services:
 
 volumes:
   certs:
+  plugins:
 
 networks:
   edge:
     name: edge
+  # Created here, like edge: CrowdSec joins it and Traefik asks it for the banned IPs.
+  crowdsec:
+    name: crowdsec
   socket:
     internal: true

@@ -18,6 +18,8 @@ services:
       - ../traefik/logs:/var/log/traefik:ro
       # The directory, not the file: rsyslog replaces auth.log when it rotates it, which a file mount would not follow.
       - /var/log:/host/var/log:ro
+    # Registers the Traefik bouncer at startup, with the key Ansible wrote from the SOPS file.
+    env_file: bouncer.env
     networks: [crowdsec]
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
@@ -31,3 +33,4 @@ volumes:
 
 networks:
   crowdsec:
+    external: true
