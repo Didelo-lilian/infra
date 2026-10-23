@@ -9,6 +9,8 @@ http:
         # SAMEORIGIN instead of frameDeny: Storybook shows its stories in an iframe of its own site. It overrides frameDeny.
         customFrameOptionsValue: SAMEORIGIN
         referrerPolicy: strict-origin-when-cross-origin
+        # Nothing here uses these features: a page cannot ask for them, nor can a script injected into it.
+        permissionsPolicy: camera=(), microphone=(), geolocation=(), payment=(), usb=()
         customResponseHeaders:
           # An empty value removes the header, whatever the backend sends.
           Server: ""
