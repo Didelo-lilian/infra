@@ -121,15 +121,6 @@
         fail_msg: Set the ALERT_EMAIL repository variable, it is where Alertmanager sends alerts.
         quiet: true
 
-    - name: Check the SMTP password
-      ansible.builtin.assert:
-        that: lookup('ansible.builtin.env', 'SMTP_PASSWORD') | length > 0
-        fail_msg: Add the SMTP_PASSWORD secret to the production environment.
-        quiet: true
-      # shortcut: the dry run has no secret, so the password is only checked and written for real.
-      # A rotation does not show in the diff: run the workflow by hand with `force`.
-      when: not ansible_check_mode
-
     - name: Create the monitoring directories
       ansible.builtin.file:
         path: /srv/stacks/monitoring/{{ item.path }}
@@ -155,11 +146,13 @@
     - name: Store the SMTP password for Alertmanager
       ansible.builtin.copy:
         dest: /srv/stacks/monitoring/secrets/smtp_password
-        content: "{{ lookup('ansible.builtin.env', 'SMTP_PASSWORD') }}"
+        content: "{{ (lookup('community.sops.sops', playbook_dir ~ '/../secrets/production.sops.yaml') | from_yaml).SMTP_PASSWORD }}"
         owner: root
         group: "65534"
         mode: "0440"
       no_log: true
+      # shortcut: the dry run has no age key, so the password is only read and written for real.
+      # A rotation does not show in the diff: run the workflow by hand with `force`.
       when: not ansible_check_mode
 
     - name: Write the monitoring settings
