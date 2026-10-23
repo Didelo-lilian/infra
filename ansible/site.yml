@@ -13,6 +13,9 @@
       - ../stacks/monitoring/grafana/dashboards/overview.json
     crowdsec_configs:
       - ../stacks/crowdsec/acquis.yaml
+    fw_bouncer:
+      version: v0.0.36
+      sha256: f86e4b72693549d99f40a9402abefb894108f047a3fbe6e72fada25ee17ce88b
   tasks:
     # The only tasks a first run from a laptop needs (--tags ci): after that, CI applies everything.
     - name: Create the CI user
@@ -203,22 +206,43 @@
         group: root
         mode: "0700"
 
-    # One key, two readers: Traefik's bouncer sends it, CrowdSec registers it as a bouncer at startup.
-    - name: Store the CrowdSec bouncer key
-      ansible.builtin.copy:
-        dest: "{{ item.dest }}"
-        content: "{{ item.before }}{{ bouncer_key }}{{ item.after }}"
-        owner: root
-        group: root
-        mode: "0600"
-      loop:
-        - { dest: /srv/stacks/traefik/secrets/crowdsec_bouncer_key, before: "", after: "" }
-        - { dest: /srv/stacks/crowdsec/bouncer.env, before: "BOUNCER_KEY_TRAEFIK=", after: "\n" }
-      vars:
-        bouncer_key: "{{ (lookup('community.sops.sops', playbook_dir ~ '/../secrets/production.sops.yaml') | from_yaml).CROWDSEC_BOUNCER_KEY }}"
-      no_log: true
-      # shortcut: same as the SMTP password, the dry run has no age key and a rotation needs the workflow run with `force`.
+    # shortcut: the dry run has no age key, so the keys are only read and written for real.
+    # A rotation does not show in the diff: run the workflow by hand with `force`.
+    - name: Write the CrowdSec bouncer keys
       when: not ansible_check_mode
+      no_log: true
+      vars:
+        secrets: "{{ lookup('community.sops.sops', playbook_dir ~ '/../secrets/production.sops.yaml') | from_yaml }}"
+      block:
+        # Traefik's bouncer sends it, CrowdSec registers both bouncers at startup.
+        - name: Store the Traefik bouncer key
+          ansible.builtin.copy:
+            dest: /srv/stacks/traefik/secrets/crowdsec_bouncer_key
+            content: "{{ secrets.CROWDSEC_BOUNCER_KEY }}"
+            owner: root
+            group: root
+            mode: "0600"
+
+        - name: Register the bouncers at CrowdSec startup
+          ansible.builtin.copy:
+            dest: /srv/stacks/crowdsec/bouncer.env
+            content: |
+              BOUNCER_KEY_TRAEFIK={{ secrets.CROWDSEC_BOUNCER_KEY }}
+              BOUNCER_KEY_FIREWALL={{ secrets.CROWDSEC_FIREWALL_BOUNCER_KEY }}
+            owner: root
+            group: root
+            mode: "0600"
+
+        - name: Configure the firewall bouncer
+          ansible.builtin.template:
+            src: crowdsec-firewall-bouncer.yaml.j2
+            dest: /etc/crowdsec-firewall-bouncer.yaml
+            owner: root
+            group: root
+            mode: "0600"
+          vars:
+            api_key: "{{ secrets.CROWDSEC_FIREWALL_BOUNCER_KEY }}"
+          notify: Restart the firewall bouncer
 
     - name: Create the monitoring directories
       ansible.builtin.file:
@@ -267,6 +291,58 @@
           + [lookup('ansible.builtin.template', 'alertmanager.yml.j2')]) | join | hash('sha1') }}
       diff: false
 
+    # The release binary, pinned by checksum: no third-party apt repository (ADR 0012).
+    - name: Install nftables
+      ansible.builtin.apt:
+        name: nftables
+
+    - name: Download the firewall bouncer
+      ansible.builtin.get_url:
+        url: "https://github.com/crowdsecurity/cs-firewall-bouncer/releases/download/{{ fw_bouncer.version }}/crowdsec-firewall-bouncer-linux-amd64.tgz"
+        dest: /var/cache/crowdsec-firewall-bouncer-{{ fw_bouncer.version }}.tgz
+        checksum: "sha256:{{ fw_bouncer.sha256 }}"
+        mode: "0644" # NOSONAR a public release archive
+
+    - name: Unpack the firewall bouncer
+      ansible.builtin.unarchive:
+        src: /var/cache/crowdsec-firewall-bouncer-{{ fw_bouncer.version }}.tgz
+        dest: /opt
+        remote_src: true
+        owner: root
+        group: root
+        creates: /opt/crowdsec-firewall-bouncer-{{ fw_bouncer.version }}/crowdsec-firewall-bouncer
+      notify: Restart the firewall bouncer
+      # In --check mode the archive is not really downloaded yet.
+      ignore_errors: "{{ ansible_check_mode }}"
+
+    - name: Run the firewall bouncer as a service
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/crowdsec-firewall-bouncer.service
+        content: |
+          [Unit]
+          Description=CrowdSec firewall bouncer
+          After=network.target docker.service
+
+          [Service]
+          Type=notify
+          ExecStart=/opt/crowdsec-firewall-bouncer-{{ fw_bouncer.version }}/crowdsec-firewall-bouncer -c /etc/crowdsec-firewall-bouncer.yaml
+          # CrowdSec may not answer yet when the host boots: keep trying until its API does.
+          Restart=always
+          RestartSec=10
+
+          [Install]
+          WantedBy=multi-user.target
+        mode: "0644" # NOSONAR a systemd unit is readable by everyone
+      notify: Restart the firewall bouncer
+
+    - name: Enable the firewall bouncer
+      ansible.builtin.systemd_service:
+        name: crowdsec-firewall-bouncer
+        enabled: true
+        daemon_reload: true
+      # In --check mode the unit is not really written yet.
+      ignore_errors: "{{ ansible_check_mode }}"
+
     - name: Start the stacks
       community.docker.docker_compose_v2:
         project_src: /srv/stacks/{{ item }}
@@ -277,6 +353,13 @@
       ignore_errors: "{{ ansible_check_mode }}"
 
   handlers:
+    - name: Restart the firewall bouncer
+      ansible.builtin.systemd_service:
+        name: crowdsec-firewall-bouncer
+        state: restarted
+      # In --check mode the service is not really installed yet.
+      ignore_errors: "{{ ansible_check_mode }}"
+
     - name: Reload ssh
       ansible.builtin.service:
         name: ssh
