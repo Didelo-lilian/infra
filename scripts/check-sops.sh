@@ -3,7 +3,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-[ -d secrets ] || exit 0
+[[ -d secrets ]] || exit 0
 status=0
 while IFS= read -r file; do
   case "$file" in
