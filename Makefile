@@ -7,7 +7,7 @@ TF = terraform -chdir=terraform
 PLAYBOOK = cd ansible && ansible-playbook site.yml --diff
 DOCKER = docker run --rm -v "$(CURDIR):/repo" -w /repo
 
-.PHONY: check check-monitoring check-secrets plan apply server-diff server server-bootstrap
+.PHONY: check check-monitoring check-secrets plan apply server-diff server server-bootstrap grafana
 
 # Images come from the compose file, so Dependabot bumps the checks along with the stack.
 MONITORING = stacks/monitoring
@@ -43,3 +43,7 @@ server:
 
 server-bootstrap:
 	$(PLAYBOOK) --tags ci
+
+# The private Grafana listens on the server's loopback only: this opens it on http://localhost:3000 until Ctrl-C.
+grafana:
+	ssh -N -L 3000:localhost:3000 didelo-vps
