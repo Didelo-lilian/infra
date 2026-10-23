@@ -50,10 +50,11 @@ flowchart LR
     tfwf["Terraform workflow<br/>plan → approval → apply"]
     srvwf["Server workflow<br/>dry run → approval → Ansible"]
     appwf["Deploy app workflow<br/>no approval, one restricted command"]
-    dsrepo["design-system<br/>image build on every merge to main"]
+    dsrepo["design-system<br/>image build on every merge to main,<br/>package published on every release"]
     ghcr[("GHCR<br/>design-system:main")]
   end
   hcp[("HCP Terraform<br/>state")]
+  npm[("npm registry<br/>@didelo/design-system")]
   statusrepo["status repository<br/>probe every 15 min, GitHub Pages"]
   inbox(["My inbox"])
 
@@ -74,6 +75,7 @@ flowchart LR
   pr -->|"squash merge"| main --> tfwf
   main --> srvwf
   dsrepo -->|"push image"| ghcr
+  dsrepo -->|"release: publish the package"| npm
   dsrepo -->|"workflow_dispatch"| appwf
   appwf -->|"SSH as deploy"| ufw
   srvwf -->|"ds: pull on every run"| ghcr
