@@ -1,0 +1,6 @@
+# Public keys only: the private ones are in my password manager, and the CI one is the SOPS_AGE_KEY secret of the production environment.
+creation_rules:
+  - path_regex: ^secrets/.*\.sops\.yaml$
+    age: >-
+      age1z9eql3wym4tas77xpp5ltquvdj09etyqqr0ajm458cs4qxwp2p7sqfx6yv,
+      age1js45867k40tvr5zp39eawhyscqlma39wl9nngvefappmc098hpjqjajxuy

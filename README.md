@@ -102,6 +102,9 @@ Changes reach production through CI, not from a laptop: once a change to `terraf
 
 `make plan` and `make apply` remain for local previews and emergencies. They read `TF_CLOUD_ORGANIZATION`, `TF_WORKSPACE` and the OVH credentials from an env file kept outside the repo (override its path with `ENV=`), and the GitHub token from `gh auth token`. Nothing secret is committed.
 
+### Secrets
+Application secrets live encrypted in `secrets/*.sops.yaml` ([ADR 0007](docs/adr/0007-secrets-with-sops-and-age.md)): [SOPS](https://github.com/getsops/sops) encrypts the values for the keys listed in [`.sops.yaml`](.sops.yaml), and only the CI and my laptop hold a private key. To edit one, run `sops secrets/production.sops.yaml` (the laptop key is read from SOPS's default location). `make check-secrets` fails if anything in `secrets/` is readable, and CI runs it on every pull request.
+
 ### The server
 
 [`ansible/site.yml`](ansible/site.yml) describes the whole server ([ADR 0003](docs/adr/0003-server-configuration-with-ansible.md)):
