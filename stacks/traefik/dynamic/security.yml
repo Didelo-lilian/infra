@@ -6,7 +6,8 @@ http:
         stsSeconds: 31536000
         stsIncludeSubdomains: true
         contentTypeNosniff: true
-        frameDeny: true
+        # SAMEORIGIN instead of frameDeny: Storybook shows its stories in an iframe of its own site. It overrides frameDeny.
+        customFrameOptionsValue: SAMEORIGIN
         referrerPolicy: strict-origin-when-cross-origin
         customResponseHeaders:
           # An empty value removes the header, whatever the backend sends.
