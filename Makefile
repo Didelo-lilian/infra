@@ -7,7 +7,7 @@ TF = terraform -chdir=terraform
 PLAYBOOK = cd ansible && ansible-playbook site.yml --diff
 DOCKER = docker run --rm -v "$(CURDIR):/repo" -w /repo
 
-.PHONY: check check-monitoring plan apply server-diff server server-bootstrap
+.PHONY: check check-monitoring check-secrets plan apply server-diff server server-bootstrap
 
 # Images come from the compose file, so Dependabot bumps the checks along with the stack.
 MONITORING = stacks/monitoring
@@ -19,7 +19,11 @@ check-monitoring:
 	$(PROMTOOL) test rules rules_test.yml
 	$(BLACKBOX) --config.check --config.file=/config/blackbox.yml
 
-check: check-monitoring
+# Nothing readable in secrets/: every file there must be SOPS-encrypted.
+check-secrets:
+	./scripts/check-sops.sh
+
+check: check-monitoring check-secrets
 	$(TF) fmt -check -recursive
 	$(TF) init -backend=false -input=false >/dev/null
 	$(TF) validate
