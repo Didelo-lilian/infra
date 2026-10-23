@@ -7,6 +7,10 @@ locals {
     wildcard_a    = { subdomain = "*", type = "A", target = var.server_ipv4 }
     wildcard_aaaa = { subdomain = "*", type = "AAAA", target = var.server_ipv6 }
 
+    # Status page, served by GitHub Pages from the status repository. Create it only once the custom domain is set
+    # on that repository's Pages site: a CNAME to github.io that nobody claims can be taken over by anyone.
+    status = { subdomain = "status", type = "CNAME", target = "didelo-lilian.github.io." }
+
     # No mail is sent or received on this domain: say so, so nobody can send mail in its name.
     null_mx = { subdomain = "", type = "MX", target = "0 ." }
     spf     = { subdomain = "", type = "TXT", target = "\"v=spf1 -all\"" }
