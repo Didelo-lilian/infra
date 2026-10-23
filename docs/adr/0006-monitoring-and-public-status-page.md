@@ -22,4 +22,4 @@ Prometheus, a blackbox exporter, node-exporter, Alertmanager and Grafana, all in
 - A CNAME to GitHub Pages must only be created after the custom domain is set on the Pages site, or anyone could claim `status.didelo.fr` first.
 - The dry run has no SMTP secret, so a rotated password does not show in the diff: run the Server workflow by hand with `force`.
 - The password file is readable by group `nobody` only, and Ansible tasks that handle it set `no_log`, because the run summary is public.
-- No per-container metrics yet (no cAdvisor) and no per-interface network metrics: node-exporter does not run on the host network. Blackbox covers each public service.
+- cAdvisor gives per-container CPU, memory and restarts, with the TCP and disk metrics turned off: they multiply the series by 50 and nothing reads them. No per-interface network metrics: node-exporter does not run on the host network.

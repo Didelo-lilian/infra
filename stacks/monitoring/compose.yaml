@@ -45,6 +45,24 @@ services:
     networks: [monitoring]
     mem_limit: 64m
 
+  # Per-container CPU, memory and restarts. Only the container metrics worth keeping are on: the TCP and disk ones
+  # would multiply the series by 50 for nothing the dashboard shows.
+  cadvisor:
+    <<: *hardened
+    image: ghcr.io/google/cadvisor:v0.60.6
+    command:
+      - --docker_only=true
+      - --housekeeping_interval=30s
+      - --store_container_labels=false
+      - --disable_metrics=disk,diskIO,percpu,referenced_memory,process,sched,tcp,udp,advtcp
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+    networks: [monitoring]
+    mem_limit: 192m
+
   alertmanager:
     <<: *hardened
     image: prom/alertmanager:v0.34.1

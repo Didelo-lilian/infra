@@ -88,6 +88,7 @@ flowchart LR
 
 [`stacks/monitoring`](stacks/monitoring/compose.yaml) ([ADR 0006](docs/adr/0006-monitoring-and-public-status-page.md)):
 - **Prometheus** scrapes the server (node-exporter) and, through a **blackbox exporter**, probes every public URL as a visitor would: availability, latency and certificate expiry. Alert rules live in [`rules.yml`](stacks/monitoring/prometheus/rules.yml) and are unit-tested.
+- **cAdvisor** adds per-container CPU, memory and restarts to the dashboard, and an alert fires when a container restarts three times in 15 minutes.
 - **Alertmanager** emails the alerts through a Gmail SMTP relay, so `didelo.fr` itself still sends no mail.
 - **Grafana** is my detailed view, reachable through an SSH tunnel only. Its datasource and dashboard are provisioned from files, so a change goes through a pull request.
 - The **public status page** is https://status.didelo.fr, served by GitHub Pages from the [status repository](https://github.com/Didelo-lilian/status), which also probes the site from outside every 15 minutes. A status page hosted on the server it watches would go down with it.
