@@ -66,3 +66,14 @@ groups:
         annotations:
           summary: "CPU is saturated"
           description: "CPU has been above 90% for 15 minutes."
+
+  - name: containers
+    rules:
+      - alert: ContainerRestarting
+        # container_start_time_seconds changes each time a container starts, so this counts the restarts.
+        expr: changes(container_start_time_seconds{name!=""}[15m]) >= 3
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.name }} keeps restarting"
+          description: "{{ $labels.name }} restarted {{ $value }} times in 15 minutes."
