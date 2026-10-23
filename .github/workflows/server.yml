@@ -98,7 +98,12 @@ jobs:
             StrictHostKeyChecking yes
             UserKnownHostsFile $PWD/known_hosts
           CONFIG
+      # The checksum comes from the release's checksums file; bump both with the version.
+      - run: |
+          curl -fsSL -o sops https://github.com/getsops/sops/releases/download/v3.13.3/sops-v3.13.3.linux.amd64
+          echo "e5bec3346a873ae91d871550f3e698c1aad962aff462a080e40f25fde17fef6b  sops" | sha256sum -c -
+          sudo install -m 755 sops /usr/local/bin/sops
       - env:
           ALERT_EMAIL: ${{ vars.ALERT_EMAIL }}
-          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          SOPS_AGE_KEY: ${{ secrets.SOPS_AGE_KEY }}
         run: ansible-playbook site.yml --diff
