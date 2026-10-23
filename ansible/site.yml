@@ -207,17 +207,17 @@
     - name: Store the CrowdSec bouncer key
       ansible.builtin.copy:
         dest: "{{ item.dest }}"
-        content: "{{ item.content }}"
+        content: "{{ item.before }}{{ bouncer_key }}{{ item.after }}"
         owner: root
         group: root
         mode: "0600"
       loop:
-        - { dest: /srv/stacks/traefik/secrets/crowdsec_bouncer_key, content: "{{ bouncer_key }}" }
-        - { dest: /srv/stacks/crowdsec/bouncer.env, content: "BOUNCER_KEY_TRAEFIK={{ bouncer_key }}\n" }
+        - { dest: /srv/stacks/traefik/secrets/crowdsec_bouncer_key, before: "", after: "" }
+        - { dest: /srv/stacks/crowdsec/bouncer.env, before: "BOUNCER_KEY_TRAEFIK=", after: "\n" }
       vars:
         bouncer_key: "{{ (lookup('community.sops.sops', playbook_dir ~ '/../secrets/production.sops.yaml') | from_yaml).CROWDSEC_BOUNCER_KEY }}"
       no_log: true
-      # shortcut: same as the SMTP password, the dry run has no age key and a rotation needs the workflow run with `force`.
+      # shortcut: same as the SMTP password (the key is only read once `when` allows it), the dry run has no age key and a rotation needs the workflow run with `force`.
       when: not ansible_check_mode
 
     - name: Create the monitoring directories
