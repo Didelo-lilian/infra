@@ -103,6 +103,12 @@ jobs:
           curl -fsSL -o sops https://github.com/getsops/sops/releases/download/v3.13.3/sops-v3.13.3.linux.amd64
           echo "e5bec3346a873ae91d871550f3e698c1aad962aff462a080e40f25fde17fef6b  sops" | sha256sum -c -
           sudo install -m 755 sops /usr/local/bin/sops
+      # GitHub only masks its own secrets: register the decrypted one so it is redacted from logs too.
+      - env:
+          SOPS_AGE_KEY: ${{ secrets.SOPS_AGE_KEY }}
+        run: |
+          value=$(sops decrypt --extract '["SMTP_PASSWORD"]' ../secrets/production.sops.yaml)
+          echo "::add-mask::$value"
       - env:
           ALERT_EMAIL: ${{ vars.ALERT_EMAIL }}
           SOPS_AGE_KEY: ${{ secrets.SOPS_AGE_KEY }}
