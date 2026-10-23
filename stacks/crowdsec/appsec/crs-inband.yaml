@@ -1,0 +1,12 @@
+# The hub's `crowdsecurity/crs` only raises alerts (out-of-band). The same OWASP CRS rules in-band block the request:
+# the anomaly score decides, and the 403 comes back before the backend sees anything.
+name: custom/crs-inband
+default_remediation: ban
+inband_rules:
+  - crowdsecurity/crs
+# A false positive: `cscli alerts list` shows the rule that fired, `cscli alerts inspect <id>` its name. Turn it off for
+# one path with a hook (docs: https://docs.crowdsec.net/docs/appsec/hooks), then merge it like any change here:
+# pre_eval:
+#   - filter: req.URL.Path startsWith "/upload"
+#     apply:
+#       - RemoveInBandRuleByName("rule-name-from-the-alert")
