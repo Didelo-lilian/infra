@@ -17,7 +17,7 @@ My personal production platform: one VPS, everything as code, every project depl
 | Edge | Traefik v3, HTTPS everywhere with automatically renewed Let's Encrypt certificates, WAF and anti-bot |
 | Observability | Prometheus, Grafana, one uptime probe per project, public status page |
 | CI/CD | Pull requests on GitHub-hosted runners, deploys from `main` on ephemeral self-hosted runners |
-| Secrets | SOPS + age, pushed to GitHub by Terraform |
+| Secrets | SOPS + age, decrypted by the CI ([ADR 0007](docs/adr/0007-secrets-with-sops-and-age.md)) |
 
 ## Architecture
 
