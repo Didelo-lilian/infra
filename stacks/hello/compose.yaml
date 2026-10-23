@@ -6,6 +6,8 @@ services:
     restart: unless-stopped
     volumes:
       - ./html:/usr/share/nginx/html:ro
+      # A directory, not a file: Ansible replaces files atomically, which a file mount would miss.
+      - ./nginx:/etc/nginx/conf.d:ro
     tmpfs: [/tmp]
     networks: [edge]
     read_only: true

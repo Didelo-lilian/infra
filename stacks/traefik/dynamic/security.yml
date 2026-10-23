@@ -8,6 +8,9 @@ http:
         contentTypeNosniff: true
         frameDeny: true
         referrerPolicy: strict-origin-when-cross-origin
+        customResponseHeaders:
+          # An empty value removes the header, whatever the backend sends.
+          Server: ""
 
 tls:
   options:
