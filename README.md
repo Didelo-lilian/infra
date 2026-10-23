@@ -3,6 +3,8 @@
 [![Release](https://img.shields.io/github/v/release/Didelo-lilian/infra)](https://github.com/Didelo-lilian/infra/releases)
 [![CI](https://github.com/Didelo-lilian/infra/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Didelo-lilian/infra/actions/workflows/ci.yml)
 [![License](https://img.shields.io/github/license/Didelo-lilian/infra)](LICENSE)
+[![SSL Labs](https://img.shields.io/badge/SSL%20Labs-A%2B-brightgreen)](https://www.ssllabs.com/ssltest/analyze.html?d=hello.didelo.fr&latest)
+[![Security Headers](https://img.shields.io/badge/Security%20Headers-A%2B-brightgreen)](https://securityheaders.com/?q=hello.didelo.fr&followRedirects=on)
 
 My personal production platform: one VPS, everything as code, every project deployed to production from CI.
 
@@ -87,6 +89,12 @@ flowchart LR
 ### Intrusion detection
 
 [`stacks/crowdsec`](stacks/crowdsec/compose.yaml) ([ADR 0010](docs/adr/0010-crowdsec-reads-the-edge-logs.md)): **CrowdSec** reads the Traefik access log and the SSH log and raises an alert for scans, probes and brute force. A bouncer plugin in Traefik ([ADR 0011](docs/adr/0011-the-traefik-bouncer-fails-open.md)) answers 403 to the banned IPs, and lets everything through if CrowdSec is down. A firewall bouncer on the host ([ADR 0012](docs/adr/0012-ban-ssh-attackers-at-the-host-firewall.md)) drops the addresses CrowdSec caught attacking SSH. **AppSec**, CrowdSec's WAF ([ADR 0013](docs/adr/0013-a-waf-in-the-edge-that-fails-open.md)), checks each request against the virtual-patching rules and the OWASP Core Rule Set and answers 403 to SQL injections, path traversals and known exploits; it fails open too.
+
+### Grades
+
+The two badges at the top are static: they say what the live reports (the links) gave on 2026-10-24 for `hello.didelo.fr`, an A+ on [SSL Labs](https://www.ssllabs.com/ssltest/analyze.html?d=hello.didelo.fr&latest) (TLS 1.2 minimum, strict SNI, HSTS) and an A+ on [securityheaders.com](https://securityheaders.com/?q=hello.didelo.fr&followRedirects=on). Reaching the second one took two changes, a `Permissions-Policy` for every site and a CSP for hello; Storybook (ds) has none yet because it needs a far looser policy that has to be tested on its own.
+
+**HSTS preload** is deliberately not used: [hstspreload.org](https://hstspreload.org/?domain=didelo.fr) reports `didelo.fr` as unknown, and it would also fail the check, because the apex has no certificate (Traefik serves `*.didelo.fr` subdomains with strict SNI) and the header has no `preload` directive. Preloading puts the whole domain in browsers' lists for months, including every future subdomain, and is hard to undo: it is a decision to take when every subdomain is stable, not before.
 
 ### Monitoring
 
