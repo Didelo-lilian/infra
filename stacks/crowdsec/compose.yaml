@@ -1,6 +1,6 @@
 name: crowdsec
 
-# CONFIG_HASH changes when the acquisition file does, which makes Compose recreate the container:
+# CONFIG_HASH changes when the acquisition file or the WAF config does, which makes Compose recreate the container:
 # CrowdSec only reads it at startup, and a single-file mount does not follow Ansible replacing the file.
 services:
   crowdsec:
@@ -8,11 +8,12 @@ services:
     restart: unless-stopped
     environment:
       # Parsers and scenarios for Traefik access logs and for sshd. The hub is downloaded at first start.
-      COLLECTIONS: crowdsecurity/traefik crowdsecurity/sshd
+      COLLECTIONS: crowdsecurity/traefik crowdsecurity/sshd crowdsecurity/appsec-virtual-patching crowdsecurity/appsec-crs
     # Reads /var/log/auth.log, which belongs to group adm: with every capability dropped, being root is not enough.
     group_add: ["${ADM_GID}"]
     volumes:
       - ./acquis.yaml:/etc/crowdsec/acquis.yaml:ro
+      - ./appsec/crs-inband.yaml:/etc/crowdsec/appsec-configs/crs-inband.yaml:ro
       - config:/etc/crowdsec
       - data:/var/lib/crowdsec/data
       - ../traefik/logs:/var/log/traefik:ro
@@ -25,7 +26,7 @@ services:
     networks: [crowdsec]
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
-    mem_limit: 256m
+    mem_limit: 384m
     labels:
       config.hash: ${CONFIG_HASH}
 

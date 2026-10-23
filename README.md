@@ -86,7 +86,7 @@ flowchart LR
 
 ### Intrusion detection
 
-[`stacks/crowdsec`](stacks/crowdsec/compose.yaml) ([ADR 0010](docs/adr/0010-crowdsec-reads-the-edge-logs.md)): **CrowdSec** reads the Traefik access log and the SSH log and raises an alert for scans, probes and brute force. A bouncer plugin in Traefik ([ADR 0011](docs/adr/0011-the-traefik-bouncer-fails-open.md)) answers 403 to the banned IPs, and lets everything through if CrowdSec is down. A firewall bouncer on the host ([ADR 0012](docs/adr/0012-ban-ssh-attackers-at-the-host-firewall.md)) drops the addresses CrowdSec caught attacking SSH.
+[`stacks/crowdsec`](stacks/crowdsec/compose.yaml) ([ADR 0010](docs/adr/0010-crowdsec-reads-the-edge-logs.md)): **CrowdSec** reads the Traefik access log and the SSH log and raises an alert for scans, probes and brute force. A bouncer plugin in Traefik ([ADR 0011](docs/adr/0011-the-traefik-bouncer-fails-open.md)) answers 403 to the banned IPs, and lets everything through if CrowdSec is down. A firewall bouncer on the host ([ADR 0012](docs/adr/0012-ban-ssh-attackers-at-the-host-firewall.md)) drops the addresses CrowdSec caught attacking SSH. **AppSec**, CrowdSec's WAF ([ADR 0013](docs/adr/0013-a-waf-in-the-edge-that-fails-open.md)), checks each request against the virtual-patching rules and the OWASP Core Rule Set and answers 403 to SQL injections, path traversals and known exploits; it fails open too.
 
 ### Monitoring
 

@@ -12,3 +12,11 @@ http:
           # A security tool that can take the sites down is worse than the attacks it stops.
           updateMaxFailure: -1
           streamStartupBlock: false
+          # The WAF in CrowdSec (AppSec) looks at every request. Fail open here too: the plugin blocks by default when AppSec
+          # errors or is unreachable. Only a match blocks, and a body over 1 MiB is not buffered for inspection.
+          crowdsecAppsecEnabled: true
+          crowdsecAppsecHost: crowdsec:7422
+          crowdsecAppsecFailureBlock: false
+          crowdsecAppsecUnreachableBlock: false
+          crowdsecAppsecUnreadableBodyBlock: false
+          crowdsecAppsecBodyLimit: 1048576

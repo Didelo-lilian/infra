@@ -13,6 +13,7 @@
       - ../stacks/monitoring/grafana/dashboards/overview.json
     crowdsec_configs:
       - ../stacks/crowdsec/acquis.yaml
+      - ../stacks/crowdsec/appsec/crs-inband.yaml
     fw_bouncer:
       version: v0.0.36
       sha256: f86e4b72693549d99f40a9402abefb894108f047a3fbe6e72fada25ee17ce88b

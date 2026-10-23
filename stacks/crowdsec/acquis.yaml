@@ -7,3 +7,13 @@ filenames:
   - /host/var/log/auth.log
 labels:
   type: syslog
+---
+# The WAF. Traefik's bouncer sends each request here and blocks it on a match.
+source: appsec
+listen_addr: 0.0.0.0:7422
+appsec_configs:
+  - crowdsecurity/virtual-patching
+  - custom/crs-inband
+name: appsec
+labels:
+  type: appsec
