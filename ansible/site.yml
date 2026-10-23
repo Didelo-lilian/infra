@@ -11,6 +11,8 @@
       - ../stacks/monitoring/grafana/provisioning/datasources/prometheus.yml
       - ../stacks/monitoring/grafana/provisioning/dashboards/dashboards.yml
       - ../stacks/monitoring/grafana/dashboards/overview.json
+    crowdsec_configs:
+      - ../stacks/crowdsec/acquis.yaml
   tasks:
     # The only tasks a first run from a laptop needs (--tags ci): after that, CI applies everything.
     - name: Create the CI user
@@ -151,6 +153,48 @@
         fail_msg: Set the ALERT_EMAIL repository variable, it is where Alertmanager sends alerts.
         quiet: true
 
+    - name: Create the Traefik log directory
+      ansible.builtin.file:
+        path: /srv/stacks/traefik/logs
+        state: directory
+        owner: root
+        group: root
+        mode: "0750"
+
+    # Traefik does not rotate its logs. copytruncate: it keeps writing to the same file.
+    - name: Rotate the Traefik access log
+      ansible.builtin.copy:
+        dest: /etc/logrotate.d/traefik
+        content: |
+          /srv/stacks/traefik/logs/access.log {
+              daily
+              maxsize 50M
+              rotate 3
+              compress
+              copytruncate
+              missingok
+              notifempty
+          }
+        mode: "0644" # NOSONAR logrotate reads it as root, nothing secret in it
+
+    - name: Look up the adm group
+      ansible.builtin.getent:
+        database: group
+        key: adm
+
+    - name: Write the CrowdSec settings
+      ansible.builtin.copy:
+        dest: /srv/stacks/crowdsec/.env
+        content: |
+          ADM_GID={{ ansible_facts.getent_group.adm[1] }}
+          CONFIG_HASH={{ config_hash }}
+        owner: root
+        group: root
+        mode: "0600"
+      vars:
+        config_hash: "{{ query('ansible.builtin.file', *crowdsec_configs) | join | hash('sha1') }}"
+      diff: false
+
     - name: Create the monitoring directories
       ansible.builtin.file:
         path: /srv/stacks/monitoring/{{ item.path }}
@@ -203,7 +247,7 @@
         project_src: /srv/stacks/{{ item }}
         remove_orphans: true
       # Traefik first: it creates the edge network the other stacks join.
-      loop: [traefik, hello, ds, monitoring]
+      loop: [traefik, crowdsec, hello, ds, monitoring]
       # In --check mode the stacks are not really copied yet.
       ignore_errors: "{{ ansible_check_mode }}"
 

@@ -84,6 +84,10 @@ flowchart LR
   tfwf <-->|"state, lock"| hcp
 ```
 
+### Intrusion detection
+
+[`stacks/crowdsec`](stacks/crowdsec/compose.yaml) ([ADR 0010](docs/adr/0010-crowdsec-reads-the-edge-logs.md)): **CrowdSec** reads the Traefik access log and the SSH log and raises an alert for scans, probes and brute force. It only observes for now; blocking comes next.
+
 ### Monitoring
 
 [`stacks/monitoring`](stacks/monitoring/compose.yaml) ([ADR 0006](docs/adr/0006-monitoring-and-public-status-page.md)):
