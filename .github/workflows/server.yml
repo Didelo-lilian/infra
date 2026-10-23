@@ -100,7 +100,7 @@ jobs:
           CONFIG
       # The checksum comes from the release's checksums file; bump both with the version.
       - run: |
-          curl -fsSL -o sops https://github.com/getsops/sops/releases/download/v3.13.3/sops-v3.13.3.linux.amd64
+          curl --proto '=https' --tlsv1.2 -fsSL -o sops https://github.com/getsops/sops/releases/download/v3.13.3/sops-v3.13.3.linux.amd64
           echo "e5bec3346a873ae91d871550f3e698c1aad962aff462a080e40f25fde17fef6b  sops" | sha256sum -c -
           sudo install -m 755 sops /usr/local/bin/sops
       # GitHub only masks its own secrets: register the decrypted one so it is redacted from logs too.
