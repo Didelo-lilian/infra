@@ -1,0 +1,50 @@
+name: Deploy app
+
+# Rolls out a new image of a stack that already runs. Unlike Server, it never changes the server's
+# configuration, so it needs no approval: see ADR 0009.
+on:
+  workflow_dispatch:
+    inputs:
+      stack:
+        description: Stack to restart on its latest image
+        type: choice
+        options: [ds]
+        required: true
+
+permissions:
+  contents: read
+
+# Its own group: a Server run waiting for approval must not hold back app deploys.
+concurrency:
+  group: deploy-app-${{ inputs.stack }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # Its secret is the restricted key, readable from main only (environment setting).
+    environment: apps
+    steps:
+      - uses: actions/checkout@v7
+      # The host key is pinned in the repo, as in Server.
+      - env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          install -m 700 -d ~/.ssh
+          (umask 077; printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy)
+          cat > ~/.ssh/config <<CONFIG
+          Host didelo-vps
+            HostName didelo.fr
+            HostKeyAlias didelo-vps
+            User deploy
+            IdentityFile ~/.ssh/deploy
+            IdentitiesOnly yes
+            StrictHostKeyChecking yes
+            UserKnownHostsFile $PWD/ansible/known_hosts
+          CONFIG
+      # The server runs a fixed command and takes the stack name only as an argument it checks.
+      - env:
+          STACK: ${{ inputs.stack }}
+        run: |
+          # shellcheck disable=SC2029 # the argument is meant to be expanded here
+          ssh didelo-vps "$STACK"

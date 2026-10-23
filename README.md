@@ -49,6 +49,7 @@ flowchart LR
     main["main"]
     tfwf["Terraform workflow<br/>plan → approval → apply"]
     srvwf["Server workflow<br/>dry run → approval → Ansible"]
+    appwf["Deploy app workflow<br/>no approval, one restricted command"]
     dsrepo["design-system<br/>image build on every merge to main"]
     ghcr[("GHCR<br/>design-system:main")]
   end
@@ -73,7 +74,8 @@ flowchart LR
   pr -->|"squash merge"| main --> tfwf
   main --> srvwf
   dsrepo -->|"push image"| ghcr
-  dsrepo -->|"workflow_dispatch"| srvwf
+  dsrepo -->|"workflow_dispatch"| appwf
+  appwf -->|"SSH as deploy"| ufw
   srvwf -->|"ds: pull on every run"| ghcr
   srvwf -->|"SSH as ci"| ufw
   tfwf -->|"OVH API"| dns
@@ -129,7 +131,7 @@ Application secrets live encrypted in `secrets/*.sops.yaml` ([ADR 0007](docs/adr
 - certificates come from Let's Encrypt through the TLS-ALPN-01 challenge and are renewed automatically, with no DNS credentials on the server;
 - Traefik reads containers through a socket proxy that only allows listing them, never the Docker socket itself;
 - an app is published by adding the `traefik.enable` label and a `Host()` rule, as [`stacks/hello`](stacks/hello/compose.yaml) does for https://hello.didelo.fr;
-- [`stacks/ds`](stacks/ds/compose.yaml) serves the Storybook of [design-system](https://github.com/Didelo-lilian/design-system) on https://ds.didelo.fr from a public GHCR image whose `main` tag moves with every merge there ([ADR 0008](docs/adr/0008-serve-a-static-site-from-another-repository.md)); the frame header is `SAMEORIGIN`, so a site can embed its own pages but no other site can frame them.
+- [`stacks/ds`](stacks/ds/compose.yaml) serves the Storybook of [design-system](https://github.com/Didelo-lilian/design-system) on https://ds.didelo.fr from a public GHCR image whose `main` tag moves with every merge there ([ADR 0008](docs/adr/0008-serve-a-static-site-from-another-repository.md)), restarted by the **Deploy app** workflow without an approval ([ADR 0009](docs/adr/0009-deploy-app-updates-without-approval.md)); the frame header is `SAMEORIGIN`, so a site can embed its own pages but no other site can frame them.
 
 It is idempotent: a second run changes nothing. Like Terraform, it is applied from CI ([ADR 0005](docs/adr/0005-apply-the-server-configuration-from-ci.md)): once a change to `ansible/` or `stacks/` is merged, the **Server** workflow dry-runs it and shows the diff in the run summary, then the real run waits for an approval in `production`. CI connects as `ci` with its own key and refuses any server whose host key differs from [`ansible/known_hosts`](ansible/known_hosts).
 

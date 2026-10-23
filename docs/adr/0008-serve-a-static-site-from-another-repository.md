@@ -1,6 +1,6 @@
 # 8. Serve a static site from another repository through a moving image tag
 
-Date: 2026-10-23 · Status: accepted
+Date: 2026-10-23 · Status: accepted; the deploy trigger is replaced by [ADR 0009](0009-deploy-app-updates-without-approval.md)
 
 ## Context
 
