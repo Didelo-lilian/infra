@@ -76,6 +76,28 @@
         append: true
         shell: /bin/bash
 
+    # `deploy` is in the docker group, which is root-equivalent: its key can only run this script (ADR 0009).
+    - name: Install the app deploy command
+      ansible.builtin.copy:
+        dest: /usr/local/bin/deploy-app
+        content: |
+          #!/bin/sh
+          set -eu
+          case "${SSH_ORIGINAL_COMMAND:-}" in
+            ds) ;;
+            *) echo "unknown stack" >&2; exit 1 ;;
+          esac
+          exec docker compose -f "/srv/stacks/$SSH_ORIGINAL_COMMAND/compose.yaml" up -d --pull always --wait --wait-timeout 60
+        mode: "0755" # NOSONAR the command is public, only the key that can run it is secret
+
+    - name: Let the deploy workflow run that command and nothing else
+      ansible.posix.authorized_key:
+        user: deploy
+        path: /home/deploy/.ssh/authorized_keys
+        key: "{{ lookup('ansible.builtin.file', 'deploy-app.pub') }}"
+        key_options: restrict,command="/usr/local/bin/deploy-app"
+        exclusive: true
+
     - name: Allow SSH, HTTP and HTTPS
       community.general.ufw:
         rule: allow
