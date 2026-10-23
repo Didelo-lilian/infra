@@ -1,0 +1,13 @@
+http:
+  middlewares:
+    rate-limit:
+      rateLimit:
+        # Per client IP. A page and its assets are a few dozen requests at once: the burst covers that, the average
+        # is what a bot hammering the site would exceed. scripts/burst.sh shows the 429s.
+        average: 30
+        period: 1s
+        burst: 100
+    in-flight:
+      inFlightReq:
+        # Open requests per client IP, WebSockets included for as long as they last.
+        amount: 50
