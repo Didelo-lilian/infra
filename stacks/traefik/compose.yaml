@@ -20,11 +20,19 @@ services:
       # TLS-ALPN-01 on port 443: no DNS credentials on the server. Traefik renews 30 days before expiry.
       - --certificatesResolvers.letsencrypt.acme.tlsChallenge=true
       - --certificatesResolvers.letsencrypt.acme.storage=/certs/acme.json
+      # JSON access log for CrowdSec. Headers are dropped, except the user agent that its scenarios look at.
+      - --accesslog=true
+      - --accesslog.format=json
+      - --accesslog.filepath=/var/log/traefik/access.log
+      - --accesslog.fields.headers.defaultMode=drop
+      - --accesslog.fields.headers.names.User-Agent=keep
     ports:
       - "80:80"
       - "443:443"
     volumes:
       - certs:/certs
+      # On the host, so that CrowdSec reads it and logrotate rotates it.
+      - ./logs:/var/log/traefik
       # The whole directory, not single files: Ansible replaces files atomically, which a file mount would miss.
       - ./dynamic:/etc/traefik/dynamic:ro
     networks: [edge, socket]
