@@ -1,5 +1,8 @@
 name: hello
 
+# CONFIG_HASH changes when the nginx config does, which makes Compose recreate the container: nginx only reads it at
+# startup, and Ansible replacing the file does not restart anything.
+
 services:
   hello:
     image: nginxinc/nginx-unprivileged:1.31.7-alpine
@@ -13,6 +16,7 @@ services:
     read_only: true
     security_opt: [no-new-privileges:true]
     labels:
+      config.hash: ${CONFIG_HASH}
       traefik.enable: "true"
       traefik.http.routers.hello.rule: Host(`hello.didelo.fr`)
       traefik.http.services.hello.loadbalancer.server.port: "8080"
