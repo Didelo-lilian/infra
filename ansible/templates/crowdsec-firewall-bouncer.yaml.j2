@@ -1,0 +1,17 @@
+mode: nftables
+update_frequency: 10s
+log_mode: stdout
+log_level: info
+# Published on the loopback only by the CrowdSec stack.
+api_url: http://127.0.0.1:8080/
+api_key: {{ api_key }}
+deny_action: DROP
+supported_decisions_types: [ban]
+# What CrowdSec detected here. The community blocklist is left to the Traefik bouncer: a blocklisted address
+# that happens to be a CI runner must not lose SSH.
+origins: [crowdsec, cscli]
+nftables:
+  ipv4: {enabled: true, set-only: false, table: crowdsec, chain: crowdsec-chain, priority: -10}
+  ipv6: {enabled: true, set-only: false, table: crowdsec6, chain: crowdsec6-chain, priority: -10}
+# Input only: the host itself, so SSH. Docker's published ports go through forward and are left to Traefik.
+nftables_hooks: [input]
