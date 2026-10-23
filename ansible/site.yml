@@ -14,6 +14,8 @@
     crowdsec_configs:
       - ../stacks/crowdsec/acquis.yaml
       - ../stacks/crowdsec/appsec/crs-inband.yaml
+    hello_configs:
+      - ../stacks/hello/nginx/default.conf
     fw_bouncer:
       version: v0.0.36
       sha256: f86e4b72693549d99f40a9402abefb894108f047a3fbe6e72fada25ee17ce88b
@@ -244,6 +246,17 @@
           vars:
             api_key: "{{ secrets.CROWDSEC_FIREWALL_BOUNCER_KEY }}"
           notify: Restart the firewall bouncer
+
+    - name: Write the hello settings
+      ansible.builtin.copy:
+        dest: /srv/stacks/hello/.env
+        content: "CONFIG_HASH={{ config_hash }}\n"
+        owner: root
+        group: root
+        mode: "0600"
+      vars:
+        config_hash: "{{ query('ansible.builtin.file', *hello_configs) | join | hash('sha1') }}"
+      diff: false
 
     - name: Create the monitoring directories
       ansible.builtin.file:
