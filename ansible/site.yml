@@ -173,7 +173,7 @@
         project_src: /srv/stacks/{{ item }}
         remove_orphans: true
       # Traefik first: it creates the edge network the other stacks join.
-      loop: [traefik, hello, monitoring]
+      loop: [traefik, hello, ds, monitoring]
       # In --check mode the stacks are not really copied yet.
       ignore_errors: "{{ ansible_check_mode }}"
 

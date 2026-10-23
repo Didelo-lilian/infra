@@ -35,6 +35,7 @@ scrape_configs:
     static_configs:
       - targets:
           - https://hello.didelo.fr
+          - https://ds.didelo.fr
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target

@@ -1,0 +1,26 @@
+name: ds
+
+services:
+  ds:
+    # Built and pushed by the design-system repository on every merge to main: the tag moves on purpose (ADR 0008).
+    image: ghcr.io/didelo-lilian/design-system:main
+    pull_policy: always
+    restart: unless-stopped
+    tmpfs: [/tmp]
+    networks: [edge]
+    read_only: true
+    security_opt: [no-new-privileges:true]
+    mem_limit: 64m
+    healthcheck:
+      test: [CMD, wget, --quiet, --spider, "http://127.0.0.1:8080/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.ds.rule: Host(`ds.didelo.fr`)
+      traefik.http.services.ds.loadbalancer.server.port: "8080"
+
+networks:
+  edge:
+    external: true
