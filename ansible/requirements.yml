@@ -1,9 +1,20 @@
+# The collections come from their GitHub repositories at a pinned commit, not from Galaxy (ADR 0016).
+# To bump one: git ls-remote --tags <repo> <tag> '<tag>^{}'  (an annotated tag has two lines: take the one ending in ^{}),
+# then paste that commit and the tag in the comment.
 collections:
-  - name: ansible.posix
-    version: 2.2.2
-  - name: community.docker
-    version: 5.4.0
-  - name: community.general
-    version: 13.5.0
-  - name: community.sops
-    version: 2.5.0
+  - name: https://github.com/ansible-collections/ansible.posix.git
+    type: git
+    version: e98d9a0756458be1ac710988498000973889075c # 2.2.2
+  - name: https://github.com/ansible-collections/community.docker.git
+    type: git
+    version: 6be1a09bebd60cb5d07e4f4753b2f393e44fe0e2 # 5.4.0
+  - name: https://github.com/ansible-collections/community.general.git
+    type: git
+    version: bbe4fa1a88a60db1000e18982849b4c54fa84fe0 # 13.5.0
+  - name: https://github.com/ansible-collections/community.sops.git
+    type: git
+    version: ceae3fc96954dd773b6c8046059f7b36b45087fa # 2.5.0
+  # A dependency of community.docker and community.general: listed here, it is not looked up on Galaxy.
+  - name: https://github.com/ansible-collections/community.library_inventory_filtering.git
+    type: git
+    version: 5f70dd8678885157cb186e8b64382a30cab3e12f # 1.1.5
