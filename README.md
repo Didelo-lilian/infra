@@ -40,7 +40,7 @@ flowchart LR
       sock[("Docker socket")]
       hello["hello<br/>nginx, non-root"]
       ds["ds<br/>Storybook, nginx non-root"]
-      graf["Grafana<br/>SSH tunnel only"]
+      graf["Grafana<br/>admin: SSH tunnel only<br/>public dashboard"]
       prom["Prometheus + blackbox<br/>30 days of metrics"]
       alert["Alertmanager"]
     end
@@ -65,6 +65,8 @@ flowchart LR
   traefik -->|"edge network"| hello
   traefik -->|"edge network"| ds
   graf --> prom
+  visitor -->|"metrics.didelo.fr"| traefik
+  traefik -->|"metrics network,<br/>public dashboard paths only"| graf
   prom -->|"probes the public URLs"| traefik
   prom -->|"alert rules"| alert
   alert -->|"SMTP"| inbox
@@ -101,9 +103,10 @@ The two badges at the top are static: they say what the live reports (the links)
 [`stacks/monitoring`](stacks/monitoring/compose.yaml) ([ADR 0006](docs/adr/0006-monitoring-and-public-status-page.md)):
 - **Prometheus** scrapes the server (node-exporter) and, through a **blackbox exporter**, probes every public URL as a visitor would: availability, latency and certificate expiry. Alert rules live in [`rules.yml`](stacks/monitoring/prometheus/rules.yml) and are unit-tested.
 - **cAdvisor** adds per-container CPU, memory and restarts to the dashboard, and an alert fires when a container restarts three times in 15 minutes.
-- **CrowdSec and Traefik** are scraped over the private `crowdsec` network (their metrics ports are published nowhere). The **Security** dashboard in Grafana shows active bans by origin, the requests Traefik refused (403 and 429), the WAF's inspected and blocked requests, the rules that fired and the addresses blocked, and how many log lines CrowdSec reads and parses. The `CrowdSecNotParsing` alert fires when it has read no line of the access log for 15 minutes; the status probes alone write one every few seconds. The addresses on the dashboard stay private: a reduced public version is a later step ([infra#45](https://github.com/Didelo-lilian/infra/issues/45)).
+- **CrowdSec and Traefik** are scraped over the private `crowdsec` network (their metrics ports are published nowhere). The **Security** dashboard in Grafana shows active bans by origin, the requests Traefik refused (403 and 429), the WAF's inspected and blocked requests, the rules that fired and the addresses blocked, and how many log lines CrowdSec reads and parses. The `CrowdSecNotParsing` alert fires when it has read no line of the access log for 15 minutes; the status probes alone write one every few seconds. The addresses on the dashboard stay private.
 - **Alertmanager** emails the alerts through a Gmail SMTP relay, so `didelo.fr` itself still sends no mail.
-- **Grafana** is my detailed view, reachable through an SSH tunnel only (`make grafana`, then http://localhost:3000). Its datasource and dashboard are provisioned from files, so a change goes through a pull request.
+- **Grafana** is my detailed view, reachable through an SSH tunnel only (`make grafana`, then http://localhost:3000). Its datasource and dashboards are provisioned from files, so a change goes through a pull request.
+- A **public dashboard** at https://metrics.didelo.fr ([ADR 0014](docs/adr/0014-a-public-metrics-dashboard-from-grafana.md)) shows what a visitor can already see plus the global load: availability, response time, certificate expiry, CPU and memory. Traefik routes only that dashboard's paths and answers 404 to the rest of Grafana. It goes down with the server, so it does not replace the status page.
 - The **public status page** is https://status.didelo.fr, served by GitHub Pages from the [status repository](https://github.com/Didelo-lilian/status), which also probes the site from outside every 15 minutes. A status page hosted on the server it watches would go down with it.
 
 Ports 80 and 443 are published by Docker, which writes its own firewall rules and bypasses ufw: that is why Traefik is the only container that publishes ports.

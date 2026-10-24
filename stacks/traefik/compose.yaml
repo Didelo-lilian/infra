@@ -46,7 +46,7 @@ services:
       - ./logs:/var/log/traefik
       # The whole directory, not single files: Ansible replaces files atomically, which a file mount would miss.
       - ./dynamic:/etc/traefik/dynamic:ro
-    networks: [edge, socket, crowdsec]
+    networks: [edge, socket, crowdsec, metrics]
     depends_on: [socket-proxy]
     read_only: true
     security_opt: [no-new-privileges:true]
@@ -79,5 +79,8 @@ networks:
   # Created here, like edge: CrowdSec joins it and Traefik asks it for the banned IPs.
   crowdsec:
     name: crowdsec
+  # Created here too: the public metrics dashboard is the only thing that joins it.
+  metrics:
+    name: metrics
   socket:
     internal: true
