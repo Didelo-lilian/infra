@@ -45,3 +45,37 @@ tests:
       - eval_time: 18m
         alertname: ContainerRestarting
         exp_alerts: []
+
+  - interval: 1m
+    input_series:
+      # Lines are read for 10 minutes, then the counter stops.
+      - series: 'cs_filesource_hits_total{source="/var/log/traefik/access.log"}'
+        values: "0+5x10 50+0x40"
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: CrowdSecNotParsing
+        exp_alerts: []
+      - eval_time: 45m
+        alertname: CrowdSecNotParsing
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: "CrowdSec is not parsing the Traefik access log"
+              description: "CrowdSec has read no line of the access log for 15 minutes, so attacks go unseen."
+
+  - interval: 1m
+    input_series:
+      # CrowdSec is gone: the series does not exist at all.
+      - series: 'up{job="crowdsec"}'
+        values: "0+0x40"
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: CrowdSecNotParsing
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              source: /var/log/traefik/access.log
+            exp_annotations:
+              summary: "CrowdSec is not parsing the Traefik access log"
+              description: "CrowdSec has read no line of the access log for 15 minutes, so attacks go unseen."

@@ -31,6 +31,19 @@ scrape_configs:
     static_configs:
       - targets: [alertmanager:9093]
 
+  - job_name: crowdsec
+    static_configs:
+      - targets: [crowdsec:6060]
+    metric_relabel_configs:
+      # One histogram per client IP and per bucket: the counters say what the dashboard needs.
+      - source_labels: [__name__]
+        regex: cs_appsec_.*_parsing_time_seconds.*
+        action: drop
+
+  - job_name: traefik
+    static_configs:
+      - targets: [traefik:8082]
+
   # Probes go through the public URL, so they exercise DNS, Traefik and the certificate like a visitor does.
   - job_name: probe-http
     metrics_path: /probe

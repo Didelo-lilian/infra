@@ -24,6 +24,9 @@ services:
       # TLS-ALPN-01 on port 443: no DNS credentials on the server. Traefik renews 30 days before expiry.
       - --certificatesResolvers.letsencrypt.acme.tlsChallenge=true
       - --certificatesResolvers.letsencrypt.acme.storage=/certs/acme.json
+      # Metrics on an entry point of their own: not published, so only containers on a shared network reach it.
+      - --entryPoints.metrics.address=:8082
+      - --metrics.prometheus.entryPoint=metrics
       # JSON access log for CrowdSec. Headers are dropped, except the user agent that its scenarios look at.
       - --accesslog=true
       - --accesslog.format=json
