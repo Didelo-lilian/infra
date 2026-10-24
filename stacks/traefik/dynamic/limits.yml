@@ -11,3 +11,7 @@ http:
       inFlightReq:
         # Open requests per client IP, WebSockets included for as long as they last.
         amount: 50
+        # Without a criterion Traefik counts per request host, so a site's 50 would be shared by all its visitors.
+        sourceCriterion:
+          ipStrategy:
+            depth: 0
