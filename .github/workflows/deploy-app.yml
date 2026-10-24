@@ -8,7 +8,7 @@ on:
       stack:
         description: Stack to restart on its latest image
         type: choice
-        options: [ds]
+        options: [ds, semaphore, play]
         required: true
 
 permissions:

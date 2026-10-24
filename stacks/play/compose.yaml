@@ -1,0 +1,38 @@
+name: play
+
+services:
+  play:
+    # Built and pushed by the semaphore repository on every merge to main: the tag moves on purpose (ADR 0008).
+    image: ghcr.io/didelo-lilian/semaphore-front:main
+    pull_policy: always
+    restart: unless-stopped
+    tmpfs: [/tmp]
+    networks: [edge]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 64m
+    healthcheck:
+      test: [CMD, wget, --quiet, --spider, "http://127.0.0.1:8080/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    labels:
+      traefik.enable: "true"
+      # Everything on play.didelo.fr that is not /ws, which the semaphore stack routes first.
+      traefik.http.routers.play.rule: Host(`play.didelo.fr`)
+      traefik.http.routers.play.middlewares: play-csp
+      # Checked in a browser against a React 19, MUI 9 and design-system build (ADR 0015). Scripts and fonts come from
+      # this origin, and the build inlines one small font as a data: URI. MUI's Emotion injects its styles as inline
+      # <style> elements at run time: without 'unsafe-inline' the page is left unstyled. The one thing the page opens is
+      # the WebSocket, spelled out because 'self' does not cover ws: and wss: in every browser. This header replaces any
+      # Content-Security-Policy the image's nginx sends.
+      traefik.http.middlewares.play-csp.headers.contentsecuritypolicy: >-
+        default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:;
+        img-src 'self' data:; connect-src 'self' wss://play.didelo.fr; manifest-src 'self'; base-uri 'none';
+        form-action 'none'; frame-ancestors 'none'
+      traefik.http.services.play.loadbalancer.server.port: "8080"
+
+networks:
+  edge:
+    external: true

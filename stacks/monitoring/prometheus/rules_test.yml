@@ -27,6 +27,26 @@ tests:
 
   - interval: 30s
     input_series:
+      # The game's WebSocket handshake is probed apart from its page: either one failing is the game being down.
+      - series: 'probe_success{job="probe-ws", instance="wss://example.test/ws"}'
+        values: "1 1 1 0 0 0 0 0 0 0"
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: SiteDown
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: SiteDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: probe-ws
+              instance: wss://example.test/ws
+            exp_annotations:
+              summary: "wss://example.test/ws is down"
+              description: "The probe for wss://example.test/ws has failed for 2 minutes."
+
+  - interval: 30s
+    input_series:
       # Restarts at minutes 1, 2 and 3 for "flapping"; "steady" never restarts.
       - series: 'container_start_time_seconds{name="flapping"}'
         values: "100 100 200 200 300 300 400 400 400 400 400 400 400 400 400 400 400 400 400 400 400 400 400 400 400 400 400 400 400 400 400 400 400 400 400 400"

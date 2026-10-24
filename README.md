@@ -41,6 +41,8 @@ flowchart LR
       sock[("Docker socket")]
       hello["hello<br/>nginx, non-root"]
       ds["ds<br/>Storybook, nginx non-root"]
+      play["play<br/>the game's React front,<br/>nginx non-root, CSP"]
+      sem["semaphore<br/>the game's backend, Spring Boot,<br/>rooms in memory"]
       graf["Grafana<br/>admin: SSH tunnel only<br/>public dashboard"]
       prom["Prometheus + blackbox<br/>30 days of metrics"]
       exp["node-exporter, cAdvisor<br/>host and container metrics"]
@@ -57,7 +59,8 @@ flowchart LR
     srvwf["Server workflow<br/>dry run → approval → Ansible"]
     appwf["Deploy app workflow<br/>no approval, one restricted command"]
     dsrepo["design-system<br/>image build on every merge to main,<br/>package published on every release"]
-    ghcr[("GHCR<br/>design-system:main")]
+    semrepo["semaphore<br/>images build on every merge to main"]
+    ghcr[("GHCR<br/>design-system, semaphore,<br/>semaphore-front: main")]
   end
   hcp[("HCP Terraform<br/>state")]
   npm[("npm registry<br/>@didelo/design-system")]
@@ -65,13 +68,15 @@ flowchart LR
   inbox(["My inbox"])
 
   visitor -->|"name lookup"| dns
-  visitor -->|"HTTP, HTTPS"| traefik
+  visitor -->|"HTTP, HTTPS, WSS"| traefik
   traefik -->|"edge network"| hello
   traefik -->|"edge network"| ds
+  traefik -->|"play.didelo.fr,<br/>everything but /ws"| play
+  traefik -->|"play.didelo.fr/ws only,<br/>24 open per IP"| sem
   graf --> prom
   visitor -->|"metrics.didelo.fr"| traefik
   traefik -->|"metrics network,<br/>public dashboard paths only"| graf
-  prom -->|"probes the public URLs"| traefik
+  prom -->|"probes the public URLs<br/>and the game's WebSocket handshake"| traefik
   prom -->|"scrapes"| exp
   prom -->|"scrapes metrics"| cs
   prom -->|"scrapes metrics"| traefik
@@ -94,8 +99,10 @@ flowchart LR
   dsrepo -->|"push image"| ghcr
   dsrepo -->|"release: publish the package"| npm
   dsrepo -->|"workflow_dispatch"| appwf
+  semrepo -->|"push images"| ghcr
+  semrepo -->|"workflow_dispatch"| appwf
   appwf -->|"SSH as deploy"| ufw
-  srvwf -->|"ds: pull on every run"| ghcr
+  srvwf -->|"ds, play, semaphore:<br/>pull on every run"| ghcr
   srvwf -->|"SSH as ci"| ufw
   tfwf -->|"OVH API"| dns
   tfwf <-->|"state, lock"| hcp
@@ -114,7 +121,7 @@ The two badges at the top are static: they say what the live reports (the links)
 ### Monitoring
 
 [`stacks/monitoring`](stacks/monitoring/compose.yaml) ([ADR 0006](docs/adr/0006-monitoring-and-public-status-page.md)):
-- **Prometheus** scrapes the server (node-exporter) and, through a **blackbox exporter**, probes every public URL as a visitor would: availability, latency and certificate expiry. Alert rules live in [`rules.yml`](stacks/monitoring/prometheus/rules.yml) and are unit-tested.
+- **Prometheus** scrapes the server (node-exporter) and, through a **blackbox exporter**, probes every public URL as a visitor would: availability, latency and certificate expiry. The game gets a second probe, the WebSocket handshake of `wss://play.didelo.fr/ws` through the edge (a `tcp` probe over TLS that passes on a `101`). Alert rules live in [`rules.yml`](stacks/monitoring/prometheus/rules.yml) and are unit-tested.
 - **cAdvisor** adds per-container CPU, memory and restarts to the dashboard, and an alert fires when a container restarts three times in 15 minutes.
 - **CrowdSec and Traefik** are scraped over the private `crowdsec` network (their metrics ports are published nowhere). The **Security** dashboard in Grafana shows active bans by origin, the requests Traefik refused (403 and 429), the WAF's inspected and blocked requests, the rules that fired and the addresses blocked, and how many log lines CrowdSec reads and parses. The `CrowdSecNotParsing` alert fires when it has read no line of the access log for 15 minutes; the status probes alone write one every few seconds. The addresses on the dashboard stay private.
 - **Alertmanager** emails the alerts through a Gmail SMTP relay, so `didelo.fr` itself still sends no mail.
@@ -160,11 +167,12 @@ Application secrets live encrypted in `secrets/*.sops.yaml` ([ADR 0007](docs/adr
 
 [`stacks/traefik`](stacks/traefik/compose.yaml) runs Traefik, the only container that publishes ports ([ADR 0004](docs/adr/0004-traefik-with-tls-challenge.md)):
 - HTTP redirects to HTTPS, and every response carries HSTS and security headers, with the `Server` header stripped so no backend version leaks;
-- each client IP is limited to **30 requests per second on average with a burst of 100**, and to **50 requests open at once** (`rate-limit` and `in-flight`, [`limits.yml`](stacks/traefik/dynamic/limits.yml)); beyond that Traefik answers 429. A page and its assets are a few dozen requests at most (Storybook's story page is about a dozen), so normal browsing, the status probes (a handful of requests every few minutes) and Storybook stay far below; a bot hammering the site does not. `scripts/burst.sh` sends a burst and counts the statuses: on a local Traefik 80 simultaneous requests all passed and 600 gave 133 answers and 467 429s. The open-request cap also covers WebSockets for as long as they stay open, which fits the game: raise it if a client legitimately needs more;
+- each client IP is limited to **30 requests per second on average with a burst of 100**, and to **50 requests open at once** (`rate-limit` and `in-flight`, [`limits.yml`](stacks/traefik/dynamic/limits.yml); `in-flight` groups by request host unless told otherwise, so its criterion is the IP on purpose, [ADR 0015](docs/adr/0015-the-game-behind-the-edge.md)); beyond that Traefik answers 429. A page and its assets are a few dozen requests at most (Storybook's story page is about a dozen), so normal browsing, the status probes (a handful of requests every few minutes) and Storybook stay far below; a bot hammering the site does not. `scripts/burst.sh` sends a burst and counts the statuses: on a local Traefik 80 simultaneous requests all passed and 600 gave 133 answers and 467 429s. The open-request cap also covers WebSockets for as long as they stay open, and `/ws` has a stricter cap of **24 per IP** (two full rooms);
 - certificates come from Let's Encrypt through the TLS-ALPN-01 challenge and are renewed automatically, with no DNS credentials on the server;
 - Traefik reads containers through a socket proxy that only allows listing them, never the Docker socket itself;
 - an app is published by adding the `traefik.enable` label and a `Host()` rule, as [`stacks/hello`](stacks/hello/compose.yaml) does for https://hello.didelo.fr;
-- [`stacks/ds`](stacks/ds/compose.yaml) serves the Storybook of [design-system](https://github.com/Didelo-lilian/design-system) on https://ds.didelo.fr from a public GHCR image whose `main` tag moves with every merge there ([ADR 0008](docs/adr/0008-serve-a-static-site-from-another-repository.md)), restarted by the **Deploy app** workflow without an approval ([ADR 0009](docs/adr/0009-deploy-app-updates-without-approval.md)); the frame header is `SAMEORIGIN`, so a site can embed its own pages but no other site can frame them.
+- [`stacks/ds`](stacks/ds/compose.yaml) serves the Storybook of [design-system](https://github.com/Didelo-lilian/design-system) on https://ds.didelo.fr from a public GHCR image whose `main` tag moves with every merge there ([ADR 0008](docs/adr/0008-serve-a-static-site-from-another-repository.md)), restarted by the **Deploy app** workflow without an approval ([ADR 0009](docs/adr/0009-deploy-app-updates-without-approval.md)); the frame header is `SAMEORIGIN`, so a site can embed its own pages but no other site can frame them;
+- [`stacks/semaphore`](stacks/semaphore/compose.yaml) and [`stacks/play`](stacks/play/compose.yaml) serve the game, [semaphore](https://github.com/Didelo-lilian/semaphore), on https://play.didelo.fr ([ADR 0015](docs/adr/0015-the-game-behind-the-edge.md)): the backend (Spring Boot, rooms in memory) takes `/ws` only, the React front takes the rest with its own Content-Security-Policy, and both are rolled out by **Deploy app** like `ds`. The Spring actuator has no router, so it is not reachable from the internet.
 
 It is idempotent: a second run changes nothing. Like Terraform, it is applied from CI ([ADR 0005](docs/adr/0005-apply-the-server-configuration-from-ci.md)): once a change to `ansible/` or `stacks/` is merged, the **Server** workflow dry-runs it and shows the diff in the run summary, then the real run waits for an approval in `production`. CI connects as `ci` with its own key and refuses any server whose host key differs from [`ansible/known_hosts`](ansible/known_hosts).
 
