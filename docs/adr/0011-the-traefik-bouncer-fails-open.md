@@ -14,7 +14,7 @@ The **CrowdSec bouncer plugin** for Traefik runs as a global middleware on `webs
 - **Fail open**: `updateMaxFailure: -1` and `streamStartupBlock: false`. The plugin blocks everything by default when CrowdSec is down or still starting, which would turn a crashed security container into an outage of every site. If CrowdSec stops, Traefik keeps the last list it has and keeps serving; if Traefik restarts while CrowdSec is down, nothing is blocked until CrowdSec is back.
 - **Key**: a random value in the SOPS file. Ansible writes it to a file that Traefik reads (`crowdsecLapiKeyFile`, so it is in no label or command line) and to an env file that CrowdSec uses to register the bouncer at startup. Nothing is registered by hand.
 - **Network**: the `crowdsec` network is created by the Traefik stack, like `edge`, and CrowdSec joins it. The API (8080) is reachable from there only.
-- **Plugin cache**: Traefik downloads the plugin when it starts and does not start without it. A volume keeps it, so a restart does not depend on the plugin catalog being reachable.
+- **Plugin download**: Traefik asks the plugin catalog for the plugin at every start. A volume gives it a writable place for the download (the container is read-only) but does not remove the catalog from the start: if the catalog does not answer, Traefik stays up with its plugins disabled, the bouncer middleware is invalid and every site answers 404 until the next start ([ADR 0017](0017-a-plugin-catalog-outage-is-accepted.md)).
 - **Version**: the plugin is pinned to `v1.8.1` in the static configuration and bumped by hand.
 
 ## Consequences

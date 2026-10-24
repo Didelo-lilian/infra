@@ -18,7 +18,8 @@ services:
       - --entryPoints.websecure.http.tls.certResolver=letsencrypt
       # The bouncer comes first: a banned IP gets its 403 before anything else runs. Then the limits per IP.
       - --entryPoints.websecure.http.middlewares=crowdsec@file,rate-limit@file,in-flight@file,security-headers@file
-      # The plugin is downloaded at startup and cached in the plugins volume.
+      # The plugin is downloaded at every start. If the catalog is unreachable, Traefik stays up without plugins and every
+      # site answers 404 until it restarts with the catalog back: see ADR 0017.
       - --experimental.plugins.bouncer.moduleName=github.com/maxlerebourg/crowdsec-bouncer-traefik-plugin
       - --experimental.plugins.bouncer.version=v1.8.1
       # TLS-ALPN-01 on port 443: no DNS credentials on the server. Traefik renews 30 days before expiry.
@@ -42,7 +43,7 @@ services:
       - "443:443"
     volumes:
       - certs:/certs
-      # Without it a restart needs the plugin catalog to be reachable, and Traefik does not start without the plugin.
+      # A writable place for the plugin download, the container is read-only. It does not spare the catalog at start.
       - plugins:/plugins-storage
       # The directory, like dynamic/: the bouncer key is a file in it.
       - ./secrets:/run/secrets:ro
