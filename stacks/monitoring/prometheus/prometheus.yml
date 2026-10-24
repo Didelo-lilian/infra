@@ -53,10 +53,29 @@ scrape_configs:
       - targets:
           - https://hello.didelo.fr
           - https://ds.didelo.fr
+          - https://play.didelo.fr
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target
       - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox:9115
+
+  # The game's WebSocket handshake through the edge, as a browser sends it: the bouncer, the WAF, the limits and the
+  # backend must all let it in. It ends after the 101, so no connection is kept and nothing reaches the actuator.
+  - job_name: probe-ws
+    metrics_path: /probe
+    params:
+      module: [ws_handshake]
+    static_configs:
+      - targets: [play.didelo.fr:443]
+        labels:
+          url: wss://play.didelo.fr/ws
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [url]
         target_label: instance
       - target_label: __address__
         replacement: blackbox:9115

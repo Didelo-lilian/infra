@@ -1,0 +1,38 @@
+name: semaphore
+
+services:
+  semaphore:
+    # Built and pushed by the semaphore repository on every merge to main: the tag moves on purpose (ADR 0008).
+    image: ghcr.io/didelo-lilian/semaphore:main
+    pull_policy: always
+    restart: unless-stopped
+    # The image writes nothing outside /tmp, so it runs with a read-only file system.
+    tmpfs: [/tmp]
+    networks: [edge]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    # About 115 MiB at rest; the JVM sizes its heap at 75% of this limit.
+    mem_limit: 384m
+    healthcheck:
+      # Inside the container only: no router points at the actuator.
+      test: [CMD, wget, --quiet, --spider, "http://127.0.0.1:8080/actuator/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    labels:
+      traefik.enable: "true"
+      # Only the WebSocket: everything else on play.didelo.fr is the front's (stacks/play). The explicit priority keeps
+      # this router above the front's catch-all, whatever the length of the two rules.
+      traefik.http.routers.semaphore.rule: Host(`play.didelo.fr`) && Path(`/ws`)
+      traefik.http.routers.semaphore.priority: "100"
+      traefik.http.routers.semaphore.middlewares: semaphore-ws-cap
+      # A WebSocket stays open and counts here for as long as it does. A room holds twelve players, each with one
+      # connection: 24 is two full rooms behind one address (a family, a class, an office), reconnections included.
+      traefik.http.middlewares.semaphore-ws-cap.inflightreq.amount: "24"
+      traefik.http.middlewares.semaphore-ws-cap.inflightreq.sourcecriterion.ipstrategy.depth: "0"
+      traefik.http.services.semaphore.loadbalancer.server.port: "8080"
+
+networks:
+  edge:
+    external: true
