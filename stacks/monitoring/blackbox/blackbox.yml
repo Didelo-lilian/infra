@@ -8,3 +8,16 @@ modules:
       # The AAAA record exists, but the default Docker bridge has no IPv6.
       preferred_ip_protocol: ip4
       ip_protocol_fallback: false
+
+  # The HTTP prober cannot do this: it would wait for a WebSocket that never closes. The request is sent as text over
+  # TLS, and the probe passes when the status line says 101. The key is the example of RFC 6455, any 16 bytes work.
+  ws_handshake:
+    prober: tcp
+    timeout: 10s
+    tcp:
+      preferred_ip_protocol: ip4
+      ip_protocol_fallback: false
+      tls: true
+      query_response:
+        - send: "GET /ws HTTP/1.1\r\nHost: play.didelo.fr\r\nOrigin: https://play.didelo.fr\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\nUser-Agent: blackbox-ws-probe\r\n\r\n" # gitleaks:allow the sample key of RFC 6455
+        - expect: "^HTTP/1\\.1 101 "
