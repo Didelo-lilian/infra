@@ -30,19 +30,23 @@ flowchart LR
   visitor([Visitor])
   laptop["My laptop<br/>first run only: make server-bootstrap"]
   le["Let's Encrypt"]
+  capi["CrowdSec community<br/>shared blocklist"]
 
   subgraph ovh["OVHcloud"]
     dns["DNS zone didelo.fr<br/>@ and * → VPS, mail locked down, CAA"]
     subgraph vps["VPS · Ubuntu 26.04"]
       ufw["ufw<br/>SSH, key only, pinned host key"]
-      traefik["Traefik v3<br/>80 → 443, HSTS, headers"]
+      traefik["Traefik v3<br/>80 → 443, HSTS, headers,<br/>rate limit, bouncer plugin"]
       proxy["socket-proxy<br/>read-only Docker API"]
       sock[("Docker socket")]
       hello["hello<br/>nginx, non-root"]
       ds["ds<br/>Storybook, nginx non-root"]
       graf["Grafana<br/>admin: SSH tunnel only<br/>public dashboard"]
       prom["Prometheus + blackbox<br/>30 days of metrics"]
+      exp["node-exporter, cAdvisor<br/>host and container metrics"]
       alert["Alertmanager"]
+      cs["CrowdSec<br/>detection, AppSec WAF"]
+      fwb["Firewall bouncer<br/>nftables, on the host"]
     end
   end
 
@@ -68,6 +72,15 @@ flowchart LR
   visitor -->|"metrics.didelo.fr"| traefik
   traefik -->|"metrics network,<br/>public dashboard paths only"| graf
   prom -->|"probes the public URLs"| traefik
+  prom -->|"scrapes"| exp
+  prom -->|"scrapes metrics"| cs
+  prom -->|"scrapes metrics"| traefik
+  traefik -->|"access log"| cs
+  traefik -->|"stream of bans,<br/>AppSec check of each request"| cs
+  ufw -->|"SSH log"| cs
+  fwb -->|"stream of bans"| cs
+  fwb -->|"drops what CrowdSec caught on SSH"| ufw
+  cs <-->|"signals, blocklist"| capi
   prom -->|"alert rules"| alert
   alert -->|"SMTP"| inbox
   statusrepo -->|"HTTPS from outside"| traefik
