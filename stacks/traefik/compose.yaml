@@ -18,9 +18,9 @@ services:
       - --entryPoints.websecure.http.tls.certResolver=letsencrypt
       # The bouncer comes first: a banned IP gets its 403 before anything else runs. Then the limits per IP.
       - --entryPoints.websecure.http.middlewares=crowdsec@file,rate-limit@file,in-flight@file,security-headers@file
-      # The plugin is downloaded at startup and cached in the plugins volume.
-      - --experimental.plugins.bouncer.moduleName=github.com/maxlerebourg/crowdsec-bouncer-traefik-plugin
-      - --experimental.plugins.bouncer.version=v1.8.1
+      # The plugin is read from plugins-local, not downloaded: Traefik asks the plugin catalog at every start, and when it
+      # does not answer it disables the plugin, so every route behind the bouncer answers 404 (ADR 0017).
+      - --experimental.localPlugins.bouncer.moduleName=github.com/maxlerebourg/crowdsec-bouncer-traefik-plugin
       # TLS-ALPN-01 on port 443: no DNS credentials on the server. Traefik renews 30 days before expiry.
       - --certificatesResolvers.letsencrypt.acme.tlsChallenge=true
       - --certificatesResolvers.letsencrypt.acme.storage=/certs/acme.json
@@ -42,8 +42,7 @@ services:
       - "443:443"
     volumes:
       - certs:/certs
-      # Without it a restart needs the plugin catalog to be reachable, and Traefik does not start without the plugin.
-      - plugins:/plugins-storage
+      - ./plugins-local:/plugins-local:ro
       # The directory, like dynamic/: the bouncer key is a file in it.
       - ./secrets:/run/secrets:ro
       # On the host, so that CrowdSec reads it and logrotate rotates it.
@@ -75,7 +74,6 @@ services:
 
 volumes:
   certs:
-  plugins:
 
 networks:
   edge:
