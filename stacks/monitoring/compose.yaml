@@ -18,7 +18,8 @@ services:
     volumes:
       - prometheus-data:/prometheus
       - ./prometheus:/etc/prometheus:ro
-    networks: [monitoring]
+    # crowdsec: CrowdSec and Traefik publish their metrics there, nowhere else.
+    networks: [monitoring, crowdsec]
     mem_limit: 512m
     labels:
       config.hash: ${CONFIG_HASH}
@@ -121,3 +122,6 @@ volumes:
 
 networks:
   monitoring:
+  # Created by the Traefik stack, which starts first.
+  crowdsec:
+    external: true

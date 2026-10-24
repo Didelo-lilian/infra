@@ -11,9 +11,11 @@
       - ../stacks/monitoring/grafana/provisioning/datasources/prometheus.yml
       - ../stacks/monitoring/grafana/provisioning/dashboards/dashboards.yml
       - ../stacks/monitoring/grafana/dashboards/overview.json
+      - ../stacks/monitoring/grafana/dashboards/security.json
     crowdsec_configs:
       - ../stacks/crowdsec/acquis.yaml
       - ../stacks/crowdsec/appsec/crs-inband.yaml
+      - ../stacks/crowdsec/config.yaml.local
     hello_configs:
       - ../stacks/hello/nginx/default.conf
     fw_bouncer:

@@ -67,6 +67,21 @@ groups:
           summary: "CPU is saturated"
           description: "CPU has been above 90% for 15 minutes."
 
+  - name: security
+    rules:
+      - alert: CrowdSecNotParsing
+        # The probes alone write a line to the Traefik access log every few seconds: silence means CrowdSec stopped
+        # reading it, or never started. The first line of a fresh start counts, so a restart does not fire it.
+        expr: |
+          sum(increase(cs_filesource_hits_total{source="/var/log/traefik/access.log"}[15m])) == 0
+          or absent(cs_filesource_hits_total{source="/var/log/traefik/access.log"})
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "CrowdSec is not parsing the Traefik access log"
+          description: "CrowdSec has read no line of the access log for 15 minutes, so attacks go unseen."
+
   - name: containers
     rules:
       - alert: ContainerRestarting

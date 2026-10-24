@@ -1,6 +1,6 @@
 name: crowdsec
 
-# CONFIG_HASH changes when the acquisition file or the WAF config does, which makes Compose recreate the container:
+# CONFIG_HASH changes when the acquisition file, the WAF config or the local config does, which makes Compose recreate the container:
 # CrowdSec only reads it at startup, and a single-file mount does not follow Ansible replacing the file.
 services:
   crowdsec:
@@ -13,6 +13,7 @@ services:
     group_add: ["${ADM_GID}"]
     volumes:
       - ./acquis.yaml:/etc/crowdsec/acquis.yaml:ro
+      - ./config.yaml.local:/etc/crowdsec/config.yaml.local:ro
       - ./appsec/crs-inband.yaml:/etc/crowdsec/appsec-configs/crs-inband.yaml:ro
       - config:/etc/crowdsec
       - data:/var/lib/crowdsec/data
