@@ -133,7 +133,7 @@ services:
       traefik.http.routers.metrics-sink.service: ping@internal
       traefik.http.routers.metrics-home.rule: Host(`metrics.didelo.fr`) && Path(`/`)
       traefik.http.routers.metrics-home.middlewares: metrics-home
-      traefik.http.middlewares.metrics-home.redirectregex.regex: ^(https?://[^/]+)/$$
+      traefik.http.middlewares.metrics-home.redirectregex.regex: ^(https?://[^/]+)/(\?.*)?$$
       traefik.http.middlewares.metrics-home.redirectregex.replacement: $${1}/public-dashboards/${PUBLIC_DASHBOARD_TOKEN}
       traefik.http.services.metrics.loadbalancer.server.port: "3000"
 
