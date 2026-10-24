@@ -3,6 +3,8 @@
   become: true
   vars:
     alert_email: "{{ lookup('ansible.builtin.env', 'ALERT_EMAIL') }}"
+    # The link of the public dashboard: public by nature, it is in every URL a visitor sees.
+    public_dashboard_token: 6f1c0d2e9b7a4c35a8e1f0b2d4c6e8a1 # gitleaks:allow
     # Files whose content restarts the monitoring containers: Compose does not notice a bind-mounted file changing.
     monitoring_configs:
       - ../stacks/monitoring/prometheus/prometheus.yml
@@ -12,6 +14,7 @@
       - ../stacks/monitoring/grafana/provisioning/dashboards/dashboards.yml
       - ../stacks/monitoring/grafana/dashboards/overview.json
       - ../stacks/monitoring/grafana/dashboards/security.json
+      - ../stacks/monitoring/grafana/dashboards/public.json
     crowdsec_configs:
       - ../stacks/crowdsec/acquis.yaml
       - ../stacks/crowdsec/appsec/crs-inband.yaml
@@ -294,10 +297,24 @@
       # A rotation does not show in the diff: run the workflow by hand with `force`.
       when: not ansible_check_mode
 
+    # Group 0 is the group Grafana's user belongs to.
+    - name: Store the Grafana admin password
+      ansible.builtin.copy:
+        dest: /srv/stacks/monitoring/secrets/grafana_admin_password
+        content: "{{ (lookup('community.sops.sops', playbook_dir ~ '/../secrets/production.sops.yaml') | from_yaml).GRAFANA_ADMIN_PASSWORD }}"
+        owner: root
+        group: root
+        mode: "0440"
+      no_log: true
+      # shortcut: same as the SMTP password, a rotation needs the workflow run with `force`.
+      when: not ansible_check_mode
+
     - name: Write the monitoring settings
       ansible.builtin.copy:
         dest: /srv/stacks/monitoring/.env
-        content: "CONFIG_HASH={{ config_hash }}\n"
+        content: |
+          CONFIG_HASH={{ config_hash }}
+          PUBLIC_DASHBOARD_TOKEN={{ public_dashboard_token }}
         owner: root
         group: root
         mode: "0600"
@@ -367,6 +384,48 @@
       loop: [traefik, crowdsec, hello, ds, monitoring]
       # In --check mode the stacks are not really copied yet.
       ignore_errors: "{{ ansible_check_mode }}"
+
+    # Grafana cannot provision a public dashboard from a file, only create it through its API (ADR 0014).
+    # The call is made on the server, where Grafana listens on localhost: it never goes through Traefik.
+    - name: Publish the public dashboard
+      when: not ansible_check_mode
+      no_log: true
+      module_defaults:
+        ansible.builtin.uri:
+          url_username: admin
+          url_password: "{{ (lookup('community.sops.sops', playbook_dir ~ '/../secrets/production.sops.yaml') | from_yaml).GRAFANA_ADMIN_PASSWORD }}"
+          force_basic_auth: true
+      block:
+        - name: Wait for Grafana to provision the dashboard
+          ansible.builtin.uri:
+            url: http://127.0.0.1:3000/api/dashboards/uid/public
+          register: public_dashboard
+          until: public_dashboard.status == 200
+          retries: 30
+          delay: 2
+          changed_when: false
+
+        - name: Look for its public link
+          ansible.builtin.uri:
+            url: http://127.0.0.1:3000/api/dashboards/uid/public/public-dashboards
+            status_code: [200, 404]
+          register: public_link
+          changed_when: false
+
+        # shortcut: a link that exists with another token is kept, a change of token needs it deleted in Grafana first.
+        - name: Create it with the token the router expects
+          ansible.builtin.uri:
+            url: http://127.0.0.1:3000/api/dashboards/uid/public/public-dashboards
+            method: POST
+            body_format: json
+            body:
+              accessToken: "{{ public_dashboard_token }}"
+              isEnabled: true
+              share: public
+              timeSelectionEnabled: false
+              annotationsEnabled: false
+          changed_when: true
+          when: public_link.status == 404
 
   handlers:
     - name: Restart the firewall bouncer

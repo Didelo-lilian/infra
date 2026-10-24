@@ -82,6 +82,8 @@ services:
   # My view of the metrics, reachable through an SSH tunnel only (ssh -L 3000:localhost:3000 didelo-vps).
   # The public status page lives outside this server: a page hosted here would go down with it.
   # Datasources and dashboards come from files, so every change goes through git.
+  # Traefik routes only the public dashboard to metrics.didelo.fr (ADR 0014): the admin password is for Ansible,
+  # which creates that public dashboard through the API, Grafana cannot provision it from a file.
   grafana:
     <<: *hardened
     image: grafana/grafana:13.2.4
@@ -91,8 +93,8 @@ services:
       GF_AUTH_ANONYMOUS_ENABLED: "true"
       GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
       GF_AUTH_DISABLE_LOGIN_FORM: "true"
-      GF_AUTH_BASIC_ENABLED: "false"
-      GF_SECURITY_DISABLE_INITIAL_ADMIN_CREATION: "true"
+      GF_AUTH_BASIC_ENABLED: "true"
+      GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/grafana_admin_password
       GF_SECURITY_DISABLE_GRAVATAR: "true"
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_SNAPSHOTS_EXTERNAL_ENABLED: "false"
@@ -106,14 +108,31 @@ services:
       - grafana-data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
       - ./grafana/dashboards:/etc/grafana/dashboards:ro
-    networks: [monitoring]
+    secrets: [grafana_admin_password]
+    networks: [monitoring, metrics]
     mem_limit: 384m
     labels:
       config.hash: ${CONFIG_HASH}
+      traefik.enable: "true"
+      traefik.docker.network: metrics
+      # Only the public dashboard, its API, the front-end assets and the ping the page makes (without it an error toast
+      # shows). Everything else answers 404: the login, the admin API and the data source proxy never reach the
+      # internet. The token is the link of the public dashboard.
+      traefik.http.routers.metrics.rule: >-
+        Host(`metrics.didelo.fr`) && (PathPrefix(`/public/`) || Path(`/api/login/ping`)
+        || PathPrefix(`/public-dashboards/${PUBLIC_DASHBOARD_TOKEN}`)
+        || PathPrefix(`/api/public/dashboards/${PUBLIC_DASHBOARD_TOKEN}`))
+      traefik.http.routers.metrics-home.rule: Host(`metrics.didelo.fr`) && Path(`/`)
+      traefik.http.routers.metrics-home.middlewares: metrics-home
+      traefik.http.middlewares.metrics-home.redirectregex.regex: ^(https?://[^/]+)/$$
+      traefik.http.middlewares.metrics-home.redirectregex.replacement: $${1}/public-dashboards/${PUBLIC_DASHBOARD_TOKEN}
+      traefik.http.services.metrics.loadbalancer.server.port: "3000"
 
 secrets:
   smtp_password:
     file: ./secrets/smtp_password
+  grafana_admin_password:
+    file: ./secrets/grafana_admin_password
 
 volumes:
   prometheus-data:
@@ -124,4 +143,7 @@ networks:
   monitoring:
   # Created by the Traefik stack, which starts first.
   crowdsec:
+    external: true
+  # Traefik and Grafana only: the containers on edge cannot reach Grafana's admin API.
+  metrics:
     external: true
