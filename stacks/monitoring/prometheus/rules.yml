@@ -2,7 +2,7 @@ groups:
   - name: availability
     rules:
       - alert: SiteDown
-        expr: probe_success{job="probe-http"} == 0
+        expr: probe_success{job=~"probe-http|probe-ws"} == 0
         for: 2m
         labels:
           severity: critical
@@ -21,7 +21,7 @@ groups:
           description: "{{ $labels.instance }} has {{ $value | humanizeDuration }} left on its certificate."
 
       - alert: SiteSlow
-        expr: probe_duration_seconds{job="probe-http"} > 2
+        expr: probe_duration_seconds{job=~"probe-http|probe-ws"} > 2
         for: 10m
         labels:
           severity: warning
