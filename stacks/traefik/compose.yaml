@@ -27,6 +27,10 @@ services:
       # Metrics on an entry point of their own: not published, so only containers on a shared network reach it.
       - --entryPoints.metrics.address=:8082
       - --metrics.prometheus.entryPoint=metrics
+      # Answers 200 on the same private entry point. The public metrics page posts its front-end timings to a router
+      # that points at it, so that the browser console stays clean.
+      - --ping=true
+      - --ping.entryPoint=metrics
       # JSON access log for CrowdSec. Headers are dropped, except the user agent that its scenarios look at.
       - --accesslog=true
       - --accesslog.format=json
