@@ -99,6 +99,10 @@ services:
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_SNAPSHOTS_EXTERNAL_ENABLED: "false"
       GF_EXPLORE_ENABLED: "false"
+      # The public page tries to open a Grafana Live WebSocket and loads these bundled apps: both fail behind the
+      # router and fill the browser console, and neither is used here.
+      GF_LIVE_MAX_CONNECTIONS: "0"
+      GF_PLUGINS_DISABLE_PLUGINS: grafana-exploretraces-app,grafana-lokiexplore-app,grafana-metricsdrilldown-app,grafana-pyroscope-app
       GF_ANALYTICS_REPORTING_ENABLED: "false"
       GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
       GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
@@ -115,13 +119,18 @@ services:
       config.hash: ${CONFIG_HASH}
       traefik.enable: "true"
       traefik.docker.network: metrics
-      # Only the public dashboard, its API, the front-end assets and the ping the page makes (without it an error toast
-      # shows). Everything else answers 404: the login, the admin API and the data source proxy never reach the
-      # internet. The token is the link of the public dashboard.
+      # Only the public dashboard, its API, the front-end assets and the two calls the page makes at load (the login
+      # ping and the list of dashboard API versions: without them an error toast shows). Everything else answers 404:
+      # the login, the admin API and the data source proxy never reach the internet. The token is the link of the
+      # public dashboard.
       traefik.http.routers.metrics.rule: >-
         Host(`metrics.didelo.fr`) && (PathPrefix(`/public/`) || Path(`/api/login/ping`)
+        || Path(`/apis/dashboard.grafana.app/`)
         || PathPrefix(`/public-dashboards/${PUBLIC_DASHBOARD_TOKEN}`)
         || PathPrefix(`/api/public/dashboards/${PUBLIC_DASHBOARD_TOKEN}`))
+      # The page posts front-end performance numbers here: Traefik swallows them, they are not worth a route to Grafana.
+      traefik.http.routers.metrics-sink.rule: Host(`metrics.didelo.fr`) && Path(`/api/frontend-metrics`)
+      traefik.http.routers.metrics-sink.service: ping@internal
       traefik.http.routers.metrics-home.rule: Host(`metrics.didelo.fr`) && Path(`/`)
       traefik.http.routers.metrics-home.middlewares: metrics-home
       traefik.http.middlewares.metrics-home.redirectregex.regex: ^(https?://[^/]+)/$$
