@@ -19,6 +19,10 @@ Add the key to `secrets/production.sops.yaml`, read it in Ansible with the `comm
 
 There is no provider to revoke it at: generate the new value with `openssl rand -hex 32` and set `REDIS_PASSWORD` as in "Change the value of a secret". The **Server** run with `force` rewrites the file and its hash, which makes Compose recreate Redis (the `redis` item of `Start the stacks` shows as `changed`); the rooms stay in its append-only file. Whatever else holds the old password (the semaphore stack, once it reads it, [ADR 0018](../adr/0018-redis-for-the-games-rooms.md)) must restart with the new one, and every game in progress ends: rotate when nobody is playing.
 
+## Rotate the Postgres passwords
+
+Generate each new value with `openssl rand -hex 32` and set `POSTGRES_PASSWORD` (the backend's role `semaphore`) or `POSTGRES_ADMIN_PASSWORD` (the superuser, which only `docker exec` uses) as in "Change the value of a secret". Postgres keeps its passwords in the database, so the **Server** run with `force` does not restart it: its `Set the Postgres passwords` task runs `ALTER ROLE` for both roles and prints nothing. For `POSTGRES_PASSWORD` the same run rewrites the backend's address file and the hash in its label, so Compose recreates the replicas (the `semaphore` item of `Start the stacks` shows as `changed`) and every game in progress ends: rotate when nobody is playing. Between the `ALTER` and the restart the new connections of a replica that still holds the old password fail; its pool reconnects once it restarts. To check: `docker exec postgres-postgres-1 psql -U postgres -c '\du'` lists the roles, and a connection with the old password must be refused.
+
 ## Rotate the CI key (planned, no suspicion)
 
 Do it in two merges so the CI can always decrypt:

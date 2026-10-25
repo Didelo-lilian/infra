@@ -12,16 +12,18 @@ services:
       replicas: 2
     # The image writes nothing outside /tmp, so it runs with a read-only file system.
     tmpfs: [/tmp]
-    # edge for Traefik, game for Redis (internal, ADR 0018). Traefik routes through edge (providers.docker.network).
+    # edge for Traefik, game for Redis and Postgres (internal, ADR 0018 and 0021). Traefik routes through edge
+    # (providers.docker.network).
     networks: [edge, game]
     read_only: true
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
-    # The Redis address holds the password: Spring reads it from the secret file as the property semaphore.redis-url,
-    # so it is in neither this file nor `docker inspect`.
+    # The Redis address and the database address hold their passwords: Spring reads each secret file as the property
+    # of the same name (semaphore.redis-url, spring.datasource.url), so they are in neither this file nor `docker
+    # inspect`. Until the image reads the second one, it is ignored.
     environment:
       SPRING_CONFIG_IMPORT: configtree:/run/secrets/
-    secrets: [semaphore.redis-url]
+    secrets: [semaphore.redis-url, spring.datasource.url]
     # About 115 MiB at rest; the JVM sizes its heap at 75% of this limit.
     mem_limit: 384m
     healthcheck:
@@ -31,8 +33,8 @@ services:
       timeout: 5s
       retries: 3
     labels:
-      # The backend reads the secret at start only and Compose does not see a bind-mounted file change: the hash of the
-      # password, written by Ansible, makes it recreate the replicas when the password changes.
+      # The backend reads the secrets at start only and Compose does not see a bind-mounted file change: the hash of the
+      # passwords, written by Ansible, makes it recreate the replicas when one changes.
       password.hash: ${PASSWORD_HASH}
       traefik.enable: "true"
       # Only the WebSocket: everything else on play.didelo.fr is the front's (stacks/play). The explicit priority keeps
@@ -49,10 +51,12 @@ services:
 secrets:
   semaphore.redis-url:
     file: ./secrets/semaphore.redis-url
+  spring.datasource.url:
+    file: ./secrets/spring.datasource.url
 
 networks:
   edge:
     external: true
-  # Created by stacks/redis, which the playbook starts first.
+  # Created by stacks/redis, which the playbook starts first (stacks/postgres joins it too).
   game:
     external: true

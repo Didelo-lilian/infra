@@ -121,6 +121,25 @@ tests:
 
   - interval: 1m
     input_series:
+      # Postgres is there for 5 minutes, then its series is gone.
+      - series: 'container_last_seen{name="postgres-postgres-1"}'
+        values: "1+0x4 stale"
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: PostgresMissing
+        exp_alerts: []
+      - eval_time: 9m
+        alertname: PostgresMissing
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              name: postgres-postgres-1
+            exp_annotations:
+              summary: "Postgres is not running"
+              description: "No Postgres container for 2 minutes: accounts, game history and the leaderboard are unavailable."
+
+  - interval: 1m
+    input_series:
       # A rollout: two replicas, then three while the new one is checked, then two again; one dies at minute 12.
       - series: 'container_last_seen{name="semaphore-semaphore-1"}'
         values: "1+0x11 stale"
