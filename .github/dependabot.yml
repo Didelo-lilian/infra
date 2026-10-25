@@ -30,6 +30,10 @@ updates:
     groups:
       images:
         patterns: ["*"]
+    ignore:
+      # A new major cannot read the data directory of the old one (ADR 0021): upgrading is a migration, not a bump.
+      - dependency-name: postgres
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: pip
     directory: /ansible
     schedule:

@@ -104,6 +104,17 @@ groups:
           summary: "Redis is not running"
           description: "No Redis container for 2 minutes: the games in progress cannot be saved or shared."
 
+      - alert: PostgresMissing
+        # Same limit as for Redis: a Postgres that runs and answers nothing is not seen here, only one that is gone,
+        # stopped or removed (ADR 0021). The backend's health check leaves the database out.
+        expr: absent(container_last_seen{name="postgres-postgres-1"})
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Postgres is not running"
+          description: "No Postgres container for 2 minutes: accounts, game history and the leaderboard are unavailable."
+
       - alert: BackendReplicaMissing
         # A rollout starts the new replica before it removes the old one, so a healthy deploy never goes below two.
         expr: (count(container_last_seen{name=~"semaphore-semaphore-[0-9]+"}) or vector(0)) < 2
