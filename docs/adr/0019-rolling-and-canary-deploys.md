@@ -4,7 +4,7 @@ Date: 2026-10-25 · Status: accepted
 
 ## Context
 
-`deploy-app` ([ADR 0009](0009-deploy-app-updates-without-approval.md)) replaced a stack's one container by starting a second next to it. The game's backend is about to run as several replicas behind Traefik, with its rooms in Redis (the Game v0.4 milestone), and then a bad image must reach one replica only and go back without a person. Four facts shape that:
+`deploy-app` ([ADR 0009](0009-deploy-app-updates-without-approval.md)) replaced a stack's one container by starting a second next to it. The game's backend is about to run as several replicas behind Traefik, with its rooms in Redis ([ADR 0018](0018-redis-for-the-games-rooms.md)), and then a bad image must reach one replica only and go back without a person. Four facts shape that:
 - the image tag moves on purpose (`:main`, [ADR 0008](0008-serve-a-static-site-from-another-repository.md)): by the time a deploy fails, the tag already names the failing image, so "the previous image" has to be recorded before the pull;
 - a replica that restarts closes its WebSockets. Clients reconnect on their own and rejoin their room, which the next replica finds in Redis, so a restart costs a reconnection and no room;
 - the script is the forced command of a key that is root-equivalent ([ADR 0009](0009-deploy-app-updates-without-approval.md)): it takes a stack from a fixed list and nothing it could run;
