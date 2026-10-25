@@ -31,7 +31,8 @@ jobs:
     environment: apps
     steps:
       - uses: actions/checkout@v7
-      # The host key is pinned in the repo, as in Server.
+      # The host key is pinned in the repo, as in Server. The soak is two silent minutes by default: keep the connection
+      # alive, a dropped one would kill the script halfway through a rollout.
       - env:
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
         run: |
@@ -44,6 +45,7 @@ jobs:
             User deploy
             IdentityFile ~/.ssh/deploy
             IdentitiesOnly yes
+            ServerAliveInterval 30
             StrictHostKeyChecking yes
             UserKnownHostsFile $PWD/ansible/known_hosts
           CONFIG
