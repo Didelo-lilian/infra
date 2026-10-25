@@ -1,7 +1,8 @@
 name: Deploy app
 
-# Rolls out a new image of a stack that already runs. Unlike Server, it never changes the server's
-# configuration, so it needs no approval: see ADR 0009.
+# Rolls out a new image of a stack that already runs, one replica at a time, and puts the previous image back when
+# the first replica fails. Unlike Server, it never changes the server's configuration, so it needs no approval:
+# see ADR 0009 and ADR 0019.
 on:
   workflow_dispatch:
     inputs:
@@ -10,6 +11,10 @@ on:
         type: choice
         options: [ds, semaphore, play]
         required: true
+      soak:
+        description: Seconds to watch the first updated replica before the others follow (empty is 120, a single replica has none)
+        type: string
+        required: false
 
 permissions:
   contents: read
@@ -42,9 +47,28 @@ jobs:
             StrictHostKeyChecking yes
             UserKnownHostsFile $PWD/ansible/known_hosts
           CONFIG
-      # The server runs a fixed command and takes the stack name only as an argument it checks.
+      # The server runs a fixed command and takes the stack name and the soak only as arguments it checks. It exits 1
+      # when it put the previous image back, 2 when it could not: either way this step, and so the run, fails.
       - env:
           STACK: ${{ inputs.stack }}
+          SOAK: ${{ inputs.soak }}
         run: |
-          # shellcheck disable=SC2029 # the argument is meant to be expanded here
-          ssh didelo-vps "$STACK"
+          # shellcheck disable=SC2029 # the arguments are meant to be expanded here
+          ssh didelo-vps "$STACK $SOAK"
+
+  # The run is started by an App, so GitHub emails nobody when it fails: an issue assigned to me does.
+  alert:
+    needs: deploy
+    if: failure()
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          STACK: ${{ inputs.stack }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          gh issue create --repo "$GITHUB_REPOSITORY" --assignee LilianSOLER \
+            --title "Deploy app failed for $STACK" \
+            --body "The deploy of \`$STACK\` failed. The log says whether the previous image was put back: $RUN_URL"

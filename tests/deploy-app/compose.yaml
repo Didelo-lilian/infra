@@ -1,0 +1,27 @@
+# The stack the deploy-app tests roll out: the service has the name of its stack, like in stacks/.
+name: deploytest
+
+services:
+  ds:
+    image: localhost:5055/deploytest:main
+    pull_policy: always
+    restart: unless-stopped
+    networks: [edge]
+    volumes: ["${STATE_DIR}:/state"]
+    deploy:
+      replicas: ${REPLICAS}
+    healthcheck:
+      test: [CMD, wget, --quiet, --spider, "http://127.0.0.1:8080/health"]
+      interval: 1s
+      timeout: 1s
+      retries: 3
+      start_period: ${START_PERIOD}
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.deploytest.rule: Host(`deploytest.localhost`)
+      traefik.http.services.deploytest.loadbalancer.server.port: "8080"
+
+networks:
+  edge:
+    external: true
+    name: deploytest-edge

@@ -1,6 +1,6 @@
 # 9. Deploy app updates without an approval
 
-Date: 2026-10-23 · Status: accepted
+Date: 2026-10-23 · Status: accepted; how the script rolls a stack out and takes a bad image back is replaced by [ADR 0019](0019-rolling-and-canary-deploys.md)
 
 ## Context
 

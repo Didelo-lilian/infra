@@ -58,7 +58,7 @@ flowchart LR
     main["main"]
     tfwf["Terraform workflow<br/>plan → approval → apply"]
     srvwf["Server workflow<br/>dry run → approval → Ansible"]
-    appwf["Deploy app workflow<br/>no approval, one restricted command"]
+    appwf["Deploy app workflow<br/>no approval, one restricted command,<br/>one replica at a time, rollback"]
     dsrepo["design-system<br/>image build on every merge to main,<br/>package published on every release"]
     semrepo["semaphore<br/>images build on every merge to main"]
     ghcr[("GHCR<br/>design-system, semaphore,<br/>semaphore-front: main")]
@@ -104,6 +104,7 @@ flowchart LR
   semrepo -->|"push images"| ghcr
   semrepo -->|"workflow_dispatch"| appwf
   appwf -->|"SSH as deploy"| ufw
+  appwf -.->|"failed run: an issue"| inbox
   srvwf -->|"ds, play, semaphore:<br/>pull on every run"| ghcr
   srvwf -->|"SSH as ci"| ufw
   tfwf -->|"OVH API"| dns
@@ -140,7 +141,8 @@ Every choice gets a short decision record in [`docs/adr/`](docs/adr/) as it is m
 Requirements: Terraform ≥ 1.14, Ansible with ansible-lint, Docker, gitleaks, the GitHub CLI, an HCP Terraform workspace in local execution mode and scoped OVH API credentials.
 
 ```bash
-make check         # same checks as CI: fmt, validate, tflint, ansible-lint, actionlint, gitleaks
+make check         # same checks as CI: fmt, validate, tflint, ansible-lint, actionlint, shellcheck, gitleaks
+make test-deploy-app   # roll real images out with the real deploy-app on a throwaway stack (needs Docker)
 make plan          # preview changes to the real infrastructure
 make apply         # apply them, after confirmation
 make server-diff   # preview the server configuration (dry run)
@@ -175,6 +177,8 @@ Application secrets live encrypted in `secrets/*.sops.yaml` ([ADR 0007](docs/adr
 - an app is published by adding the `traefik.enable` label and a `Host()` rule, as [`stacks/hello`](stacks/hello/compose.yaml) does for https://hello.didelo.fr;
 - [`stacks/ds`](stacks/ds/compose.yaml) serves the Storybook of [design-system](https://github.com/Didelo-lilian/design-system) on https://ds.didelo.fr from a public GHCR image whose `main` tag moves with every merge there ([ADR 0008](docs/adr/0008-serve-a-static-site-from-another-repository.md)), restarted by the **Deploy app** workflow without an approval ([ADR 0009](docs/adr/0009-deploy-app-updates-without-approval.md)); the frame header is `SAMEORIGIN`, so a site can embed its own pages but no other site can frame them;
 - [`stacks/semaphore`](stacks/semaphore/compose.yaml) and [`stacks/play`](stacks/play/compose.yaml) serve the game, [semaphore](https://github.com/Didelo-lilian/semaphore), on https://play.didelo.fr ([ADR 0015](docs/adr/0015-the-game-behind-the-edge.md)): the backend (Spring Boot, rooms in memory) takes `/ws` only, the React front takes the rest with its own Content-Security-Policy, and both are rolled out by **Deploy app** like `ds`. The Spring actuator has no router, so it is not reachable from the internet.
+
+- **Deploys of an app** ([ADR 0019](docs/adr/0019-rolling-and-canary-deploys.md)): [`scripts/deploy-app`](scripts/deploy-app), the one command the **Deploy app** key can run, updates a stack's replicas one at a time. It records the image that runs, pulls once, starts a replica on the new image next to the old ones and waits until it is healthy; with several replicas the first one, the canary, is then watched for two minutes (the soak) for restarts and health before the others follow. A canary that fails puts the previous image back, the run fails and opens an issue. A stack with one replica gets no soak. [`tests/deploy-app`](tests/deploy-app/run.sh) runs it against a throwaway stack, in CI too.
 
 It is idempotent: a second run changes nothing. Like Terraform, it is applied from CI ([ADR 0005](docs/adr/0005-apply-the-server-configuration-from-ci.md)): once a change to `ansible/` or `stacks/` is merged, the **Server** workflow dry-runs it and shows the diff in the run summary, then the real run waits for an approval in `production`. CI connects as `ci` with its own key and refuses any server whose host key differs from [`ansible/known_hosts`](ansible/known_hosts).
 
