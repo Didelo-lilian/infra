@@ -302,6 +302,14 @@
         group: root
         mode: "0700"
 
+    - name: Create the semaphore secrets directory
+      ansible.builtin.file:
+        path: /srv/stacks/semaphore/secrets
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
     # Group 10002 is the one the Redis container runs as: nothing else on the host has it.
     # shortcut: the dry run has no age key, so the password is only read and written for real.
     # A rotation does not show in the diff: run the workflow by hand with `force`.
@@ -324,6 +332,24 @@
         - name: Write the Redis settings
           ansible.builtin.copy:
             dest: /srv/stacks/redis/.env
+            content: "PASSWORD_HASH={{ redis_password | hash('sha256') }}\n"
+            owner: root
+            group: root
+            mode: "0600"
+
+        # The backend takes its Redis address, password included, from this file (stacks/semaphore). Group 10001 is the
+        # one its container runs as, and the hash recreates the replicas when the password changes, like Redis.
+        - name: Write the backend's Redis address
+          ansible.builtin.copy:
+            dest: /srv/stacks/semaphore/secrets/semaphore.redis-url
+            content: "redis://:{{ redis_password }}@redis:6379"
+            owner: root
+            group: "10001"
+            mode: "0440"
+
+        - name: Write the semaphore settings
+          ansible.builtin.copy:
+            dest: /srv/stacks/semaphore/.env
             content: "PASSWORD_HASH={{ redis_password | hash('sha256') }}\n"
             owner: root
             group: root
