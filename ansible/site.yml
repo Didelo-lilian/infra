@@ -356,7 +356,7 @@
             mode: "0440"
 
     # Group 70 is the one the Postgres image runs as. The superuser's password is read at the first start only and is
-    # never used over the network (stacks/postgres/initdb); the backend's goes into its JDBC address. Both are set in the
+    # never used over the network (stacks/postgres/initdb); the backend's goes into a secret file. Both are set in the
     # database itself by the task after the stacks start, which is why neither needs a hash to recreate the container.
     # shortcut: the dry run has no age key, so the passwords are only read and written for real.
     # A rotation does not show in the diff: run the workflow by hand with `force`.
@@ -374,12 +374,12 @@
             group: "70"
             mode: "0440"
 
-        # The backend takes its database address, user and password included, from this file (stacks/semaphore). Group
-        # 10001 is the one its container runs as.
-        - name: Write the backend's database address
+        # The backend takes the password from this file, the address and the user from its environment (stacks/semaphore):
+        # Flyway logs the address, so the password stays out of it. Group 10001 is the one its container runs as.
+        - name: Write the backend's database password
           ansible.builtin.copy:
-            dest: /srv/stacks/semaphore/secrets/spring.datasource.url
-            content: "jdbc:postgresql://postgres:5432/semaphore?user=semaphore&password={{ secrets.POSTGRES_PASSWORD }}"
+            dest: /srv/stacks/semaphore/secrets/spring.datasource.password
+            content: "{{ secrets.POSTGRES_PASSWORD }}"
             owner: root
             group: "10001"
             mode: "0440"

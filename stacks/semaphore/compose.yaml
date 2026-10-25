@@ -18,12 +18,15 @@ services:
     read_only: true
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
-    # The Redis address and the database address hold their passwords: Spring reads each secret file as the property
-    # of the same name (semaphore.redis-url, spring.datasource.url), so they are in neither this file nor `docker
-    # inspect`. An image that does not read the second one ignores it.
+    # The Redis address holds its password and the database password has a file of its own: Spring reads each secret file
+    # as the property of the same name (semaphore.redis-url, spring.datasource.password), so they are in neither this
+    # file nor `docker inspect`. The database address and user are not secret, and Flyway logs the address, which is why
+    # the password is not in it. An image that does not read these properties ignores them.
     environment:
       SPRING_CONFIG_IMPORT: configtree:/run/secrets/
-    secrets: [semaphore.redis-url, spring.datasource.url]
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/semaphore
+      SPRING_DATASOURCE_USERNAME: semaphore
+    secrets: [semaphore.redis-url, spring.datasource.password]
     # About 115 MiB at rest; the JVM sizes its heap at 75% of this limit.
     mem_limit: 384m
     healthcheck:
@@ -51,8 +54,8 @@ services:
 secrets:
   semaphore.redis-url:
     file: ./secrets/semaphore.redis-url
-  spring.datasource.url:
-    file: ./secrets/spring.datasource.url
+  spring.datasource.password:
+    file: ./secrets/spring.datasource.password
 
 networks:
   edge:
