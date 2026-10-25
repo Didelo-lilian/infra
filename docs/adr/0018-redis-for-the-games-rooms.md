@@ -60,6 +60,7 @@ Limits and what to watch:
 - **One Redis, no replica and no failover.** When it is down nobody can create or join a room, and the games in progress stop. For a personal platform that is accepted; the rooms themselves are not lost, they are in the file.
 - **An image bump or a rotation recreates it**, and every connection to it drops until it is back; the dataset is small, so that is about the time of a start.
 - **A refused write is the backend's to handle.** It must answer an error to the player and carry on.
+- **Nothing orders the start of Redis before the backend.** They are two Compose projects: after the 04:00 reboot, or an apply that recreates Redis, the backend can start first. It has to retry its connection until Redis answers.
 - **A rotation of the password ends the games in progress**, because the backend holds the old one until it restarts too. Do it when nobody is playing. Until the backend uses Redis nothing else needs a restart.
 - **The traffic between the backend and Redis is not encrypted**: it stays on an internal network of one host.
 - **The host has `vm.overcommit_memory = 0`.** The usual advice for Redis is 1, and Valkey warns at start when it is not (not seen here: my test host has 1). With 6 GiB available and a dataset of at most 64 MiB, the fork is not at risk; the setting is host-wide, so it is left alone.
