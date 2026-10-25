@@ -1,0 +1,66 @@
+name: postgres
+
+services:
+  postgres:
+    # The official image, alpine variant, on the newest stable major (ADR 0021). Dependabot bumps the tag and the digest
+    # together; a new major cannot read the data directory of the old one, so it is ignored there (dependabot.yml).
+    image: postgres:18.6-alpine@sha256:898c60cb390d1085bc97bdd6a1ae968757421df394b071848b52b1c09c89d6a5
+    restart: unless-stopped
+    # The image's own user: initdb looks the running user up in /etc/passwd, so an id of my choosing would not start.
+    user: "70:70"
+    # Fast shutdown on SIGINT is the image's default; the grace period lets a checkpoint finish.
+    stop_grace_period: 30s
+    # The superuser's password is read at the first start only, and Ansible sets both passwords on every run (ADR 0021).
+    # Nothing but `docker exec` uses the superuser: the backend has a role of its own.
+    environment:
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_admin_password
+    # 64 MiB of shared buffers and 40 connections (two replicas hold ten each, Flyway one) inside a 256 MiB limit.
+    command:
+      - postgres
+      - -c
+      - shared_buffers=64MB
+      - -c
+      - max_connections=40
+      - -c
+      - maintenance_work_mem=32MB
+      - -c
+      - max_wal_size=256MB
+      - -c
+      - min_wal_size=64MB
+      - -c
+      - random_page_cost=1.1
+      - -c
+      - log_min_duration_statement=1000
+    volumes:
+      # The image keeps the data in a versioned directory below this one (PGDATA=/var/lib/postgresql/18/docker).
+      - data:/var/lib/postgresql
+      # Runs once, on an empty data directory.
+      - ./initdb:/docker-entrypoint-initdb.d:ro
+    # The socket and the temporary files are all the server writes outside the data volume.
+    tmpfs: [/tmp, /var/run/postgresql]
+    secrets: [postgres_admin_password]
+    networks: [game]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 256m
+    healthcheck:
+      # Over TCP on purpose: during the first start the image runs a temporary server that listens on the socket only,
+      # which would make a check on the socket pass before the initialisation is done.
+      test: [CMD, pg_isready, -h, 127.0.0.1, -U, postgres, -q]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+secrets:
+  postgres_admin_password:
+    file: ./secrets/postgres_admin_password
+
+volumes:
+  data:
+
+networks:
+  # Created by the Redis stack (ADR 0018): internal, no route to the outside, and nothing here is published.
+  game:
+    external: true
