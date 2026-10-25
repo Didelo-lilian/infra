@@ -357,6 +357,28 @@
             group: root
             mode: "0644" # NOSONAR a hash that is not a secret, read by the deploy user
 
+    # The sign-in of the game (semaphore ADR 0011): the backend reads each file as the property
+    # `semaphore.auth.<provider>.client-id` or `.client-secret`, and a blank one means that provider is off. A value that
+    # is not in SOPS yet gives an empty file, so the files exist before the OAuth applications are registered.
+    # shortcut: the dry run has no age key, so the values are only read and written for real.
+    # A rotation does not show in the diff: run the workflow by hand with `force`.
+    - name: Write the sign-in settings
+      when: not ansible_check_mode
+      no_log: true
+      vars:
+        secrets: "{{ lookup('community.sops.sops', playbook_dir ~ '/../secrets/production.sops.yaml') | from_yaml }}"
+      ansible.builtin.copy:
+        dest: /srv/stacks/semaphore/secrets/semaphore.auth.{{ item.provider }}.{{ item.part }}
+        content: "{{ secrets[item.key] | default('') }}"
+        owner: root
+        group: "10001"
+        mode: "0440"
+      loop:
+        - { provider: github, part: client-id, key: GITHUB_CLIENT_ID }
+        - { provider: github, part: client-secret, key: GITHUB_CLIENT_SECRET }
+        - { provider: google, part: client-id, key: GOOGLE_CLIENT_ID }
+        - { provider: google, part: client-secret, key: GOOGLE_CLIENT_SECRET }
+
     - name: Write the monitoring settings
       ansible.builtin.copy:
         dest: /srv/stacks/monitoring/.env
