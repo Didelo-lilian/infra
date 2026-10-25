@@ -36,7 +36,7 @@ The backend keeps nothing but the provider's user id: no e-mail, no name, no ava
 4. Clients → Create client → **Web application**, named `semaphore`:
    - **Authorized redirect URIs**: `https://play.didelo.fr/api/auth/callback/google`
    - No JavaScript origin is needed: the exchange happens on the server.
-5. Copy the **Client ID** and the **Client secret** from the dialog: Google shows the secret at creation only.
+5. Copy the **Client ID** and the **Client secret** from the dialog now: Google may not show the secret again.
 
 ## Store the four values
 
@@ -47,13 +47,13 @@ cd ~/Projects/didelo/main/infra   # or a worktree of infra on a new branch
 sops secrets/production.sops.yaml
 ```
 
-Add four lines in the editor, then save:
+Add four lines in the editor, then save. Keep the quotes: a client id of digits with an `e` in the middle would otherwise be read as a number and stored altered.
 
 ```yaml
-GITHUB_CLIENT_ID: <from GitHub>
-GITHUB_CLIENT_SECRET: <from GitHub>
-GOOGLE_CLIENT_ID: <from Google>
-GOOGLE_CLIENT_SECRET: <from Google>
+GITHUB_CLIENT_ID: "<from GitHub>"
+GITHUB_CLIENT_SECRET: "<from GitHub>"
+GOOGLE_CLIENT_ID: "<from Google>"
+GOOGLE_CLIENT_SECRET: "<from Google>"
 ```
 
 Open a pull request (`chore(secrets): add the OAuth client settings of the game`) and merge it. The dry run cannot see secrets, so run the **Server** workflow by hand with `force` and approve it: the task `Write the sign-in settings` writes one file per value in `/srv/stacks/semaphore/secrets/` and shows `changed`. The backend reads them once the sign-in code is deployed.
