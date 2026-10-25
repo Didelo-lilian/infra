@@ -39,14 +39,14 @@ publish() { # mode version
   kept=$(docker image inspect -f '{{.Id}}' localhost:5055/deploytest:main 2>/dev/null || true)
   docker build -q --build-arg "MODE=$1" --build-arg "VERSION=$2" -t localhost:5055/deploytest:main tests/deploy-app >/dev/null
   docker push -q localhost:5055/deploytest:main >/dev/null
-  if [ -n "$kept" ]; then docker tag "$kept" localhost:5055/deploytest:main; else docker rmi localhost:5055/deploytest:main >/dev/null; fi
+  if [[ -n "$kept" ]]; then docker tag "$kept" localhost:5055/deploytest:main; else docker rmi localhost:5055/deploytest:main >/dev/null; fi
 }
 ids() { $compose ps -q ds | sort | tr '\n' ' '; }
 version_of() { docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$1" | sed -n 's/^VERSION=//p'; }
 served() { curl -fsS -m 2 -H 'Host: deploytest.localhost' http://127.0.0.1:18080/ 2>/dev/null || true; }
 wait_served() {
   for _ in $(seq 60); do
-    [ "$(served)" != "$1" ] || return 0
+    [[ "$(served)" != "$1" ]] || return 0
     sleep 0.5
   done
   echo "version $1 is not served through Traefik"
@@ -85,12 +85,12 @@ scenario() {
   SSH_ORIGINAL_COMMAND="ds $soak" scripts/deploy-app >"$tmp/log" 2>&1 &
   local deploy=$!
   second=
-  if [ -n "$canary" ]; then
+  if [[ -n "$canary" ]]; then
     until grep -q watching "$tmp/log" || ! kill -0 "$deploy" 2>/dev/null; do sleep 0.2; done
     sleep 3
     second=$(open_clients)
     # The tag moves again while the soak runs: the replicas still to come must get the image the canary got.
-    [ -z "${MOVE_TAG:-}" ] || publish good 3
+    [[ -z "${MOVE_TAG:-}" ]] || publish good 3
   fi
   rc=0
   wait "$deploy" || rc=$?
@@ -102,10 +102,10 @@ scenario() {
   echo "  connections still open: $(alive "$first")/20 of the first batch${second:+, $(alive "$second")/20 of the second}"
 }
 
-all_on() { local c; for c in $after; do [ "$(version_of "$c")" = "$1" ] || return 1; done; }
-untouched() { [ "$after" = "$before" ]; }
+all_on() { local c; for c in $after; do [[ "$(version_of "$c")" = "$1" ]] || return 1; done; }
+untouched() { [[ "$after" = "$before" ]]; }
 kept_one() { local c; for c in $before; do case " $after " in *" $c "*) return 0 ;; esac; done; return 1; }
-fast() { [ "$rc" = 0 ] && [ "$elapsed" -lt 20 ]; }
+fast() { [[ "$rc" = 0 && "$elapsed" -lt 20 ]]; }
 
 MOVE_TAG=1 scenario "good image, and the tag moves again during the soak" 2 good 8 canary
 check "exits 0" [ "$rc" = 0 ]
@@ -156,5 +156,5 @@ for bad in "" "nginx" "ds;id" "ds 1000" "ds -1" "ds 5 6" "../ds"; do
   check "refuses '$bad'" [ "$rc" = 1 ]
 done
 
-[ "$failures" = 0 ] || { echo "$failures check(s) failed"; exit 1; }
+[[ "$failures" = 0 ]] || { echo "$failures check(s) failed"; exit 1; }
 echo "all checks passed"
