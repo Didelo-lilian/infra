@@ -347,13 +347,15 @@
             group: "10001"
             mode: "0440"
 
+        # World-readable on purpose: deploy-app runs Compose as the `deploy` user, which reads this file (the hash of a
+        # random 256-bit value tells nothing about it). Redis has no such reader, so its own file stays 0600.
         - name: Write the semaphore settings
           ansible.builtin.copy:
             dest: /srv/stacks/semaphore/.env
             content: "PASSWORD_HASH={{ redis_password | hash('sha256') }}\n"
             owner: root
             group: root
-            mode: "0600"
+            mode: "0644" # NOSONAR a hash that is not a secret, read by the deploy user
 
     - name: Write the monitoring settings
       ansible.builtin.copy:
