@@ -99,3 +99,44 @@ tests:
             exp_annotations:
               summary: "CrowdSec is not parsing the Traefik access log"
               description: "CrowdSec has read no line of the access log for 15 minutes, so attacks go unseen."
+
+  - interval: 1m
+    input_series:
+      # Redis is there for 5 minutes, then its series is gone.
+      - series: 'container_last_seen{name="redis-redis-1"}'
+        values: "1+0x4 stale"
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: RedisMissing
+        exp_alerts: []
+      - eval_time: 9m
+        alertname: RedisMissing
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              name: redis-redis-1
+            exp_annotations:
+              summary: "Redis is not running"
+              description: "No Redis container for 2 minutes: the games in progress cannot be saved or shared."
+
+  - interval: 1m
+    input_series:
+      # A rollout: two replicas, then three while the new one is checked, then two again; one dies at minute 12.
+      - series: 'container_last_seen{name="semaphore-semaphore-1"}'
+        values: "1+0x11 stale"
+      - series: 'container_last_seen{name="semaphore-semaphore-2"}'
+        values: "1+0x40"
+      - series: 'container_last_seen{name="semaphore-semaphore-3"}'
+        values: "_x3 1+0x5 stale"
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: BackendReplicaMissing
+        exp_alerts: []
+      - eval_time: 18m
+        alertname: BackendReplicaMissing
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: "A replica of the game's backend is missing"
+              description: "Fewer than two backend containers for 5 minutes: players are served by 1."

@@ -92,3 +92,24 @@ groups:
         annotations:
           summary: "{{ $labels.name }} keeps restarting"
           description: "{{ $labels.name }} restarted {{ $value }} times in 15 minutes."
+
+      - alert: RedisMissing
+        # cAdvisor exports no health status, so a Redis that runs and answers nothing is not seen here: only one that is
+        # gone, stopped or removed (ADR 0018). The backend does not report it either, its health check leaves Redis out.
+        expr: absent(container_last_seen{name="redis-redis-1"})
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Redis is not running"
+          description: "No Redis container for 2 minutes: the games in progress cannot be saved or shared."
+
+      - alert: BackendReplicaMissing
+        # A rollout starts the new replica before it removes the old one, so a healthy deploy never goes below two.
+        expr: (count(container_last_seen{name=~"semaphore-semaphore-[0-9]+"}) or vector(0)) < 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "A replica of the game's backend is missing"
+          description: "Fewer than two backend containers for 5 minutes: players are served by {{ $value }}."

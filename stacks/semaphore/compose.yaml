@@ -6,12 +6,22 @@ services:
     image: ghcr.io/didelo-lilian/semaphore:main
     pull_policy: always
     restart: unless-stopped
+    # Two replicas, no sticky sessions: Traefik picks one per handshake and the rooms are in Redis, so any replica serves
+    # a `rejoin` (ADR 0008). scripts/deploy-app keeps the count while it replaces them one at a time (ADR 0019).
+    deploy:
+      replicas: 2
     # The image writes nothing outside /tmp, so it runs with a read-only file system.
     tmpfs: [/tmp]
-    networks: [edge]
+    # edge for Traefik, game for Redis (internal, ADR 0018). Traefik routes through edge (providers.docker.network).
+    networks: [edge, game]
     read_only: true
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
+    # The Redis address holds the password: Spring reads it from the secret file as the property semaphore.redis-url,
+    # so it is in neither this file nor `docker inspect`.
+    environment:
+      SPRING_CONFIG_IMPORT: configtree:/run/secrets/
+    secrets: [semaphore.redis-url]
     # About 115 MiB at rest; the JVM sizes its heap at 75% of this limit.
     mem_limit: 384m
     healthcheck:
@@ -21,6 +31,9 @@ services:
       timeout: 5s
       retries: 3
     labels:
+      # The backend reads the secret at start only and Compose does not see a bind-mounted file change: the hash of the
+      # password, written by Ansible, makes it recreate the replicas when the password changes.
+      password.hash: ${PASSWORD_HASH}
       traefik.enable: "true"
       # Only the WebSocket: everything else on play.didelo.fr is the front's (stacks/play). The explicit priority keeps
       # this router above the front's catch-all, whatever the length of the two rules.
@@ -33,6 +46,13 @@ services:
       traefik.http.middlewares.semaphore-ws-cap.inflightreq.sourcecriterion.ipstrategy.depth: "0"
       traefik.http.services.semaphore.loadbalancer.server.port: "8080"
 
+secrets:
+  semaphore.redis-url:
+    file: ./secrets/semaphore.redis-url
+
 networks:
   edge:
+    external: true
+  # Created by stacks/redis, which the playbook starts first.
+  game:
     external: true

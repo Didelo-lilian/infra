@@ -42,7 +42,7 @@ flowchart LR
       hello["hello<br/>nginx, non-root"]
       ds["ds<br/>Storybook, nginx non-root"]
       play["play<br/>the game's React front,<br/>nginx non-root, CSP"]
-      sem["semaphore<br/>the game's backend, Spring Boot,<br/>rooms in memory"]
+      sem["semaphore<br/>the game's backend, Spring Boot,<br/>two replicas, rooms in Redis"]
       redis["redis<br/>Valkey, password, append-only file,<br/>internal game network"]
       graf["Grafana<br/>admin: SSH tunnel only<br/>public dashboard"]
       prom["Prometheus + blackbox<br/>30 days of metrics"]
@@ -74,7 +74,7 @@ flowchart LR
   traefik -->|"edge network"| ds
   traefik -->|"play.didelo.fr,<br/>everything but /ws"| play
   traefik -->|"play.didelo.fr/ws only,<br/>24 open per IP"| sem
-  sem -.->|"game network, internal,<br/>once the backend keeps its rooms there"| redis
+  sem -->|"game network, internal,<br/>rooms, pub/sub"| redis
   graf --> prom
   visitor -->|"metrics.didelo.fr"| traefik
   traefik -->|"metrics network,<br/>public dashboard paths only"| graf
@@ -125,7 +125,7 @@ The two badges at the top are static: they say what the live reports (the links)
 
 [`stacks/monitoring`](stacks/monitoring/compose.yaml) ([ADR 0006](docs/adr/0006-monitoring-and-public-status-page.md)):
 - **Prometheus** scrapes the server (node-exporter) and, through a **blackbox exporter**, probes every public URL as a visitor would: availability, latency and certificate expiry. The game gets a second probe, the WebSocket handshake of `wss://play.didelo.fr/ws` through the edge (a `tcp` probe over TLS that passes on a `101`). Alert rules live in [`rules.yml`](stacks/monitoring/prometheus/rules.yml) and are unit-tested.
-- **cAdvisor** adds per-container CPU, memory and restarts to the dashboard, and an alert fires when a container restarts three times in 15 minutes.
+- **cAdvisor** adds per-container CPU, memory and restarts to the dashboard, and an alert fires when a container restarts three times in 15 minutes, when Redis has been gone for 2 minutes and when the game's backend has fewer than two replicas for 5 minutes.
 - **CrowdSec and Traefik** are scraped over the private `crowdsec` network (their metrics ports are published nowhere). The **Security** dashboard in Grafana shows active bans by origin, the requests Traefik refused (403 and 429), the WAF's inspected and blocked requests, the rules that fired and the addresses blocked, and how many log lines CrowdSec reads and parses. The `CrowdSecNotParsing` alert fires when it has read no line of the access log for 15 minutes; the status probes alone write one every few seconds. The addresses on the dashboard stay private.
 - **Alertmanager** emails the alerts through a Gmail SMTP relay, so `didelo.fr` itself still sends no mail.
 - **Grafana** is my detailed view, reachable through an SSH tunnel only (`make grafana`, then http://localhost:3000). Its datasource and dashboards are provisioned from files, so a change goes through a pull request.
@@ -176,7 +176,7 @@ Application secrets live encrypted in `secrets/*.sops.yaml` ([ADR 0007](docs/adr
 - Traefik reads containers through a socket proxy that only allows listing them, never the Docker socket itself;
 - an app is published by adding the `traefik.enable` label and a `Host()` rule, as [`stacks/hello`](stacks/hello/compose.yaml) does for https://hello.didelo.fr;
 - [`stacks/ds`](stacks/ds/compose.yaml) serves the Storybook of [design-system](https://github.com/Didelo-lilian/design-system) on https://ds.didelo.fr from a public GHCR image whose `main` tag moves with every merge there ([ADR 0008](docs/adr/0008-serve-a-static-site-from-another-repository.md)), restarted by the **Deploy app** workflow without an approval ([ADR 0009](docs/adr/0009-deploy-app-updates-without-approval.md)); the frame header is `SAMEORIGIN`, so a site can embed its own pages but no other site can frame them;
-- [`stacks/semaphore`](stacks/semaphore/compose.yaml) and [`stacks/play`](stacks/play/compose.yaml) serve the game, [semaphore](https://github.com/Didelo-lilian/semaphore), on https://play.didelo.fr ([ADR 0015](docs/adr/0015-the-game-behind-the-edge.md)): the backend (Spring Boot, rooms in memory) takes `/ws` only, the React front takes the rest with its own Content-Security-Policy, and both are rolled out by **Deploy app** like `ds`. The Spring actuator has no router, so it is not reachable from the internet.
+- [`stacks/semaphore`](stacks/semaphore/compose.yaml) and [`stacks/play`](stacks/play/compose.yaml) serve the game, [semaphore](https://github.com/Didelo-lilian/semaphore), on https://play.didelo.fr ([ADR 0015](docs/adr/0015-the-game-behind-the-edge.md)): the backend (Spring Boot, two replicas that share their rooms in Redis, [ADR 0020](docs/adr/0020-two-replicas-of-the-backend.md)) takes `/ws` only, the React front takes the rest with its own Content-Security-Policy, and both are rolled out by **Deploy app** like `ds`. The Spring actuator has no router, so it is not reachable from the internet.
 
 - **Deploys of an app** ([ADR 0019](docs/adr/0019-rolling-and-canary-deploys.md)): [`scripts/deploy-app`](scripts/deploy-app), the one command the **Deploy app** key can run, updates a stack's replicas one at a time. It records the image that runs, pulls once, starts a replica on the new image next to the old ones and waits until it is healthy; with several replicas the first one, the canary, is then watched for two minutes (the soak) for restarts and health before the others follow. A canary that fails puts the previous image back, the run fails and opens an issue. A stack with one replica gets no soak. [`tests/deploy-app`](tests/deploy-app/run.sh) runs it against a throwaway stack, in CI too.
 
