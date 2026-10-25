@@ -43,6 +43,7 @@ flowchart LR
       ds["ds<br/>Storybook, nginx non-root"]
       play["play<br/>the game's React front,<br/>nginx non-root, CSP"]
       sem["semaphore<br/>the game's backend, Spring Boot,<br/>rooms in memory"]
+      redis["redis<br/>Valkey, password, append-only file,<br/>internal game network"]
       graf["Grafana<br/>admin: SSH tunnel only<br/>public dashboard"]
       prom["Prometheus + blackbox<br/>30 days of metrics"]
       exp["node-exporter, cAdvisor<br/>host and container metrics"]
@@ -73,6 +74,7 @@ flowchart LR
   traefik -->|"edge network"| ds
   traefik -->|"play.didelo.fr,<br/>everything but /ws"| play
   traefik -->|"play.didelo.fr/ws only,<br/>24 open per IP"| sem
+  sem -.->|"game network, internal,<br/>once the backend keeps its rooms there"| redis
   graf --> prom
   visitor -->|"metrics.didelo.fr"| traefik
   traefik -->|"metrics network,<br/>public dashboard paths only"| graf
@@ -177,6 +179,10 @@ Application secrets live encrypted in `secrets/*.sops.yaml` ([ADR 0007](docs/adr
 It is idempotent: a second run changes nothing. Like Terraform, it is applied from CI ([ADR 0005](docs/adr/0005-apply-the-server-configuration-from-ci.md)): once a change to `ansible/` or `stacks/` is merged, the **Server** workflow dry-runs it and shows the diff in the run summary, then the real run waits for an approval in `production`. CI connects as `ci` with its own key and refuses any server whose host key differs from [`ansible/known_hosts`](ansible/known_hosts).
 
 From a laptop, the playbook reaches the server through an SSH alias `didelo-vps` defined in `~/.ssh/config` (host, user `ubuntu`, key).
+
+### The game's Redis
+
+[`stacks/redis`](stacks/redis/compose.yaml) runs Valkey, the BSD fork of Redis, for the rooms of the game ([ADR 0018](docs/adr/0018-redis-for-the-games-rooms.md)): image pinned by digest, read-only, no capability, a password from SOPS, an append-only file flushed every second so that a restart keeps the rooms, and `noeviction` under a 64 MiB `maxmemory` so that a full Redis refuses a write instead of dropping a room. It is alone on the internal `game` network (no published port, not on `edge`), which the backend joins when its rooms move there; nothing uses it yet.
 
 ## Changelog
 

@@ -309,6 +309,28 @@
       # shortcut: same as the SMTP password, a rotation needs the workflow run with `force`.
       when: not ansible_check_mode
 
+    - name: Create the Redis secrets directory
+      ansible.builtin.file:
+        path: /srv/stacks/redis/secrets
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
+    # Group 10002 is the one the Redis container runs as: nothing else on the host has it.
+    - name: Store the Redis password
+      ansible.builtin.copy:
+        dest: /srv/stacks/redis/secrets/redis_password
+        content: "{{ (lookup('community.sops.sops', playbook_dir ~ '/../secrets/production.sops.yaml') | from_yaml).REDIS_PASSWORD }}"
+        owner: root
+        group: "10002"
+        mode: "0440"
+      no_log: true
+      # Redis reads the password when it starts: a changed file restarts it.
+      notify: Restart Redis
+      # shortcut: same as the SMTP password, a rotation needs the workflow run with `force`.
+      when: not ansible_check_mode
+
     - name: Write the monitoring settings
       ansible.builtin.copy:
         dest: /srv/stacks/monitoring/.env
@@ -380,8 +402,8 @@
       community.docker.docker_compose_v2:
         project_src: /srv/stacks/{{ item }}
         remove_orphans: true
-      # Traefik first: it creates the edge network the other stacks join.
-      loop: [traefik, crowdsec, hello, ds, semaphore, play, monitoring]
+      # Traefik first: it creates the edge network the other stacks join. Redis before semaphore: it creates the game one.
+      loop: [traefik, crowdsec, hello, ds, redis, semaphore, play, monitoring]
       # In --check mode the stacks are not really copied yet.
       ignore_errors: "{{ ansible_check_mode }}"
 
@@ -433,6 +455,13 @@
         name: crowdsec-firewall-bouncer
         state: restarted
       # In --check mode the service is not really installed yet.
+      ignore_errors: "{{ ansible_check_mode }}"
+
+    - name: Restart Redis
+      community.docker.docker_compose_v2:
+        project_src: /srv/stacks/redis
+        state: restarted
+      # In --check mode the stack is not really started yet.
       ignore_errors: "{{ ansible_check_mode }}"
 
     - name: Reload ssh
