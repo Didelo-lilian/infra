@@ -43,7 +43,7 @@ Checked with the real `scripts/deploy-app` on a throwaway stack (`make test-depl
 
 | Case | Exit | After | Open of the first 20 | Open of the 20 opened during the soak |
 |---|---|---|---|---|
-| Good image, soak 8 s | 0 | 2 replicas on the new image, new version served | 0 | 7 (the ones on the canary) |
+| Good image, soak 8 s, the registry's tag moves again during the soak | 0 | 2 replicas, both on the image the canary got (version 2 served while the tag named version 3) | 0 | 7 (the ones on the canary) |
 | Image that exits at once | 1 | the same two containers, old version served, 3 s | 20 | none opened |
 | Image that never becomes healthy | 1 | the same two containers, 4 s | 20 | none opened |
 | Image still `starting` when the 6 s limit is up | 1 | the same two containers, 8 s | 20 | none opened |

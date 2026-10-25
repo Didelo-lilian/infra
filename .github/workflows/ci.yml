@@ -48,6 +48,7 @@ jobs:
   # The real deploy-app rolling out real images on a throwaway stack (ADR 0019).
   deploy-app:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - run: make test-deploy-app
