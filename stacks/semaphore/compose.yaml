@@ -20,7 +20,7 @@ services:
     security_opt: [no-new-privileges:true]
     # The Redis address and the database address hold their passwords: Spring reads each secret file as the property
     # of the same name (semaphore.redis-url, spring.datasource.url), so they are in neither this file nor `docker
-    # inspect`. Until the image reads the second one, it is ignored.
+    # inspect`. An image that does not read the second one ignores it.
     environment:
       SPRING_CONFIG_IMPORT: configtree:/run/secrets/
     secrets: [semaphore.redis-url, spring.datasource.url]
