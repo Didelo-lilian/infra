@@ -17,7 +17,7 @@ Add the key to `secrets/production.sops.yaml`, read it in Ansible with the `comm
 
 ## Rotate the Redis password
 
-There is no provider to revoke it at: generate the new value with `openssl rand -hex 32` and set `REDIS_PASSWORD` as in "Change the value of a secret". The **Server** run with `force` rewrites the file and Ansible restarts Redis (the `Restart Redis` handler shows as `changed`); the rooms stay in its append-only file. Whatever else holds the old password (the semaphore stack, once it reads it, [ADR 0018](../adr/0018-redis-for-the-games-rooms.md)) must restart with the new one, and every game in progress ends: rotate when nobody is playing.
+There is no provider to revoke it at: generate the new value with `openssl rand -hex 32` and set `REDIS_PASSWORD` as in "Change the value of a secret". The **Server** run with `force` rewrites the file and its hash, which makes Compose recreate Redis (the `redis` item of `Start the stacks` shows as `changed`); the rooms stay in its append-only file. Whatever else holds the old password (the semaphore stack, once it reads it, [ADR 0018](../adr/0018-redis-for-the-games-rooms.md)) must restart with the new one, and every game in progress ends: rotate when nobody is playing.
 
 ## Rotate the CI key (planned, no suspicion)
 

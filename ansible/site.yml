@@ -318,18 +318,31 @@
         mode: "0700"
 
     # Group 10002 is the one the Redis container runs as: nothing else on the host has it.
+    # shortcut: the dry run has no age key, so the password is only read and written for real.
+    # A rotation does not show in the diff: run the workflow by hand with `force`.
     - name: Store the Redis password
-      ansible.builtin.copy:
-        dest: /srv/stacks/redis/secrets/redis_password
-        content: "{{ (lookup('community.sops.sops', playbook_dir ~ '/../secrets/production.sops.yaml') | from_yaml).REDIS_PASSWORD }}"
-        owner: root
-        group: "10002"
-        mode: "0440"
-      no_log: true
-      # Redis reads the password when it starts: a changed file restarts it.
-      notify: Restart Redis
-      # shortcut: same as the SMTP password, a rotation needs the workflow run with `force`.
       when: not ansible_check_mode
+      no_log: true
+      vars:
+        redis_password: "{{ (lookup('community.sops.sops', playbook_dir ~ '/../secrets/production.sops.yaml') | from_yaml).REDIS_PASSWORD }}"
+      block:
+        - name: Write the Redis password file
+          ansible.builtin.copy:
+            dest: /srv/stacks/redis/secrets/redis_password
+            content: "{{ redis_password }}"
+            owner: root
+            group: "10002"
+            mode: "0440"
+
+        # Valkey reads the password at start only and Compose does not see a bind-mounted file change: the hash in a
+        # label makes it recreate Redis when the password does, even if a later task of the run fails.
+        - name: Write the Redis settings
+          ansible.builtin.copy:
+            dest: /srv/stacks/redis/.env
+            content: "PASSWORD_HASH={{ redis_password | hash('sha256') }}\n"
+            owner: root
+            group: root
+            mode: "0600"
 
     - name: Write the monitoring settings
       ansible.builtin.copy:
@@ -455,13 +468,6 @@
         name: crowdsec-firewall-bouncer
         state: restarted
       # In --check mode the service is not really installed yet.
-      ignore_errors: "{{ ansible_check_mode }}"
-
-    - name: Restart Redis
-      community.docker.docker_compose_v2:
-        project_src: /srv/stacks/redis
-        state: restarted
-      # In --check mode the stack is not really started yet.
       ignore_errors: "{{ ansible_check_mode }}"
 
     - name: Reload ssh

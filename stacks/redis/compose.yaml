@@ -8,9 +8,8 @@ services:
     # A user that owns nothing else on the host: the password file below is readable by this group only.
     user: "10002:10002"
     # The password is read from the file at start, so it is never in the Compose file or in `docker inspect`.
-    # A rotation needs a restart: Ansible does it when the file changes. maxmemory is a third of mem_limit: the fork that
-    # rewrites the append-only file can duplicate the dataset while writes go on. noeviction refuses a write when
-    # full instead of dropping a room.
+    # maxmemory is a third of mem_limit: the fork that rewrites the append-only file can duplicate the dataset while
+    # writes go on. noeviction refuses a write when full instead of dropping a room.
     command:
       - sh
       - -c
@@ -30,6 +29,10 @@ services:
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     mem_limit: 192m
+    labels:
+      # Valkey reads the password at start only, and Compose does not see a bind-mounted file change: the hash of the
+      # password, written by Ansible, makes it recreate the container when the password changes.
+      password.hash: ${PASSWORD_HASH}
     healthcheck:
       # The password goes through the environment, not the command line, where `ps` would show it.
       test: [CMD-SHELL, 'REDISCLI_AUTH="$$(cat /run/secrets/redis_password)" valkey-cli ping | grep -q PONG']
