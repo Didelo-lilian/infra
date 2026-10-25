@@ -1,0 +1,55 @@
+name: redis
+
+services:
+  redis:
+    # Valkey, the BSD fork of Redis (ADR 0018). Dependabot bumps the tag and the digest together.
+    image: valkey/valkey:9.1.2-alpine@sha256:48332870af354a799964c0012ae1194a0bf2bf894eb508f945810596dc2d8d11
+    restart: unless-stopped
+    # A user that owns nothing else on the host: the password file below is readable by this group only.
+    user: "10002:10002"
+    # The password is read from the file at start, so it is never in the Compose file or in `docker inspect`.
+    # maxmemory is a third of mem_limit: the fork that rewrites the append-only file can duplicate the dataset while
+    # writes go on. noeviction refuses a write when full instead of dropping a room.
+    command:
+      - sh
+      - -c
+      - >-
+        exec valkey-server
+        --appendonly yes
+        --appendfsync everysec
+        --save ""
+        --maxmemory 64mb
+        --maxmemory-policy noeviction
+        --requirepass "$$(cat /run/secrets/redis_password)"
+    volumes:
+      - data:/data
+    secrets: [redis_password]
+    networks: [game]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 192m
+    labels:
+      # Valkey reads the password at start only, and Compose does not see a bind-mounted file change: the hash of the
+      # password, written by Ansible, makes it recreate the container when the password changes.
+      password.hash: ${PASSWORD_HASH}
+    healthcheck:
+      # The password goes through the environment, not the command line, where `ps` would show it.
+      test: [CMD-SHELL, 'REDISCLI_AUTH="$$(cat /run/secrets/redis_password)" valkey-cli ping | grep -q PONG']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+secrets:
+  redis_password:
+    file: ./secrets/redis_password
+
+volumes:
+  data:
+
+networks:
+  # Created here, like edge in the Traefik stack: only this stack and the semaphore stack join it. Internal: no route
+  # to the outside, and no port is published (ADR 0018).
+  game:
+    name: game
+    internal: true

@@ -15,6 +15,10 @@ Run everything from a checkout of `infra`. `sops` finds the laptop key in its de
 
 Add the key to `secrets/production.sops.yaml`, read it in Ansible with the `community.sops.sops` lookup, and give the task that writes it `no_log: true`. If its value is used in a shell step of the workflow, register it with `::add-mask::` first, as the Server workflow does for the SMTP password.
 
+## Rotate the Redis password
+
+There is no provider to revoke it at: generate the new value with `openssl rand -hex 32` and set `REDIS_PASSWORD` as in "Change the value of a secret". The **Server** run with `force` rewrites the file and its hash, which makes Compose recreate Redis (the `redis` item of `Start the stacks` shows as `changed`); the rooms stay in its append-only file. Whatever else holds the old password (the semaphore stack, once it reads it, [ADR 0018](../adr/0018-redis-for-the-games-rooms.md)) must restart with the new one, and every game in progress ends: rotate when nobody is playing.
+
 ## Rotate the CI key (planned, no suspicion)
 
 Do it in two merges so the CI can always decrypt:
