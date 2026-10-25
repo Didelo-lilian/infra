@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.3.0](https://github.com/Didelo-lilian/infra/compare/v0.2.0...v0.3.0) (2026-10-25)
+
+
+### Features
+
+* **deploy-app:** update replicas one at a time with a canary and roll back on failure ([b01b342](https://github.com/Didelo-lilian/infra/commit/b01b342666e22dd3f62ff032461d769b269bc2d0))
+* **play:** serve the game on play.didelo.fr ([#71](https://github.com/Didelo-lilian/infra/issues/71)) ([18e2e6f](https://github.com/Didelo-lilian/infra/commit/18e2e6f755a6826d3a9ece3a6f7c3ecb826f59ce)), closes [#70](https://github.com/Didelo-lilian/infra/issues/70)
+* **redis:** run Valkey for the game's rooms on a private network ([#86](https://github.com/Didelo-lilian/infra/issues/86)) ([c3468fe](https://github.com/Didelo-lilian/infra/commit/c3468fe2c7163e542494f3d867fcde5047dfd99c))
+* **semaphore:** run two replicas of the backend that share their rooms in Redis ([2b39c24](https://github.com/Didelo-lilian/infra/commit/2b39c24623cce8d594b39b233a85613475dbf55b))
+
+
+### Bug fixes
+
+* **semaphore:** let the deploy user read the stack's .env ([0001a30](https://github.com/Didelo-lilian/infra/commit/0001a30f51ff578244c5b060c9f752d03c115e78))
+
+
+### Documentation
+
+* **adr:** correct what the plugin volume does and accept a catalog outage ([#80](https://github.com/Didelo-lilian/infra/issues/80)) ([4113db8](https://github.com/Didelo-lilian/infra/commit/4113db88841abcaa7af5edac7cca128b475ae1a4))
+
 ## [0.2.0](https://github.com/Didelo-lilian/infra/compare/v0.1.0...v0.2.0) (2026-10-24)
 
 
