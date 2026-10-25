@@ -92,23 +92,8 @@
     # `deploy` is in the docker group, which is root-equivalent: its key can only run this script (ADR 0009).
     - name: Install the app deploy command
       ansible.builtin.copy:
+        src: ../scripts/deploy-app
         dest: /usr/local/bin/deploy-app
-        content: |
-          #!/bin/sh
-          set -eu
-          case "${SSH_ORIGINAL_COMMAND:-}" in
-            ds|semaphore|play) ;;
-            *) echo "unknown stack" >&2; exit 1 ;;
-          esac
-          # The service has the name of its stack. The new container starts next to the old one, and the old one
-          # goes once the new one is healthy: Traefik only routes to healthy containers, so nothing is dropped.
-          stack=$SSH_ORIGINAL_COMMAND
-          compose="docker compose -f /srv/stacks/$stack/compose.yaml"
-          old=$($compose ps -q "$stack")
-          $compose pull
-          $compose up -d --no-recreate --scale "$stack=$(($(echo "$old" | wc -w) + 1))" --wait --wait-timeout 90
-          # shellcheck disable=SC2086
-          [ -z "$old" ] || docker rm -f $old
         mode: "0755" # NOSONAR the command is public, only the key that can run it is secret
 
     - name: Let the deploy workflow run that command and nothing else

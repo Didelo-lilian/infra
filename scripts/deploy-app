@@ -1,0 +1,101 @@
+#!/bin/sh
+# shellcheck disable=SC2086 # the lists hold container ids, hexadecimal words meant to be split
+# Rolls out the latest image of a stack one replica at a time, and puts the previous image back when the first
+# replica fails (ADR 0019, on top of ADR 0009). It is the forced command of the deploy key: the argument is
+# `<stack> [soak seconds]`, a stack from a fixed list and digits, never a pattern.
+set -eu
+
+read -r stack soak extra <<EOF
+${SSH_ORIGINAL_COMMAND:-}
+EOF
+case $stack in
+  ds|semaphore|play) ;;
+  *) echo "unknown stack" >&2; exit 1 ;;
+esac
+soak=${soak:-120}
+case $soak in
+  *[!0-9]*|????*) echo "the soak is a number of seconds under 1000" >&2; exit 1 ;;
+esac
+[ -z "$extra" ] || { echo "too many arguments" >&2; exit 1; }
+
+# The environment is not reachable through the forced command: the two variables are there for the tests.
+compose="docker compose -f ${DEPLOY_STACKS_DIR:-/srv/stacks}/$stack/compose.yaml"
+timeout=${DEPLOY_HEALTH_TIMEOUT:-90}
+
+ids() { $compose ps -q "$stack"; }
+
+# Polls a container every second and fails at its first restart or as soon as it is not running. With `wait` it
+# succeeds at the first `healthy` and fails on `unhealthy` or when the time is up; with `soak` it fails as soon as
+# it is not healthy and succeeds when the time is up.
+observe() {
+  i=0
+  while [ "$i" -lt "$2" ]; do
+    read -r status health restarts <<EOF
+$(docker inspect -f '{{.State.Status}} {{.State.Health.Status}} {{.RestartCount}}' "$1" 2>/dev/null)
+EOF
+    [ "$status" = running ] && [ "$restarts" = 0 ] || return 1
+    case $health in
+      healthy) [ "$3" = wait ] && return 0 ;;
+      unhealthy) return 1 ;;
+      *) [ "$3" = wait ] || return 1 ;;
+    esac
+    sleep 1
+    i=$((i + 1))
+  done
+  [ "$3" = soak ]
+}
+
+# The tag has moved on to the failing image: point it back at the one that ran, start what is missing from it with
+# the compose file as it is, and remove every container still on the failing one.
+rollback() {
+  docker tag "$prev" "$ref" || return 1
+  all=$(ids)
+  bad=
+  kept=0
+  for c in $all; do
+    if [ "$(docker inspect -f '{{.Image}}' "$c")" = "$prev" ]; then kept=$((kept + 1)); else bad="$bad $c"; fi
+  done
+  if [ "$kept" -lt "$n" ]; then
+    set -- $all
+    $compose up -d --no-recreate --pull never --scale "$stack=$(($# + n - kept))" || return 1
+    for c in $(ids | grep -vxF "$all"); do observe "$c" "$timeout" wait || return 1; done
+  fi
+  [ -z "$bad" ] || docker rm -f $bad >/dev/null
+}
+
+fail() {
+  echo "$stack: $1, putting the previous image back" >&2
+  rollback || { echo "$stack: the rollback failed" >&2; exit 2; }
+  echo "$stack: rolled back to the image that was running" >&2
+  exit 1
+}
+
+old=$(ids)
+if [ -z "$old" ]; then
+  $compose pull
+  exec $compose up -d --wait --wait-timeout "$timeout"
+fi
+set -- $old
+n=$#
+first=$1
+ref=$(docker inspect -f '{{.Config.Image}}' "$first")
+prev=$(docker inspect -f '{{.Image}}' "$first")
+echo "$stack: $n replicas, running $(docker image inspect -f '{{join .RepoDigests " "}}' "$prev")"
+
+# One pull, then nothing pulls again: every replica of this rollout gets the image the first one got.
+$compose pull
+replaced=0
+for victim in $old; do
+  before=$(ids)
+  set -- $before
+  $compose up -d --no-recreate --pull never --scale "$stack=$(($# + 1))" || fail "a new replica did not start"
+  new=$(ids | grep -vxF "$before" || true)
+  observe "$new" "$timeout" wait || fail "the new replica did not get healthy"
+  if [ "$victim" = "$first" ] && [ "$n" -gt 1 ]; then
+    echo "$stack: watching the canary for ${soak}s"
+    observe "$new" "$soak" soak || fail "the canary restarted or turned unhealthy during the soak"
+  fi
+  docker rm -f "$victim" >/dev/null
+  replaced=$((replaced + 1))
+  echo "$stack: replica $replaced of $n is on the new image"
+done
