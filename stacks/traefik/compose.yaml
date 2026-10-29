@@ -58,7 +58,7 @@ services:
 
   # Traefik never touches the Docker socket: this proxy only lets it list containers and follow events.
   socket-proxy:
-    image: wollomatic/socket-proxy:1.13.1
+    image: wollomatic/socket-proxy:1.13.2
     restart: unless-stopped
     user: "65534:${DOCKER_GID}"
     command:
