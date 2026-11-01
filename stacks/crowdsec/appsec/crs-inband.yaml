@@ -10,3 +10,9 @@ inband_rules:
 #   - filter: req.URL.Path startsWith "/upload"
 #     apply:
 #       - RemoveInBandRuleByName("rule-name-from-the-alert")
+pre_eval:
+  # Rule 911100 allows GET, HEAD, POST and OPTIONS only, and its score alone (5) blocks the request. The game's API
+  # saves a pseudo with PUT and deletes an account with DELETE: those two, on that API, are the exception (ADR 0013).
+  - filter: req.Host == "play.didelo.fr" && req.URL.Path startsWith "/api/" && req.Method in ["PUT", "DELETE"]
+    apply:
+      - RemoveInBandRuleByID(911100)
