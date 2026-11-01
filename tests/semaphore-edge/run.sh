@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # Checks what Traefik sends where on play.didelo.fr (ADR 0022): the real labels of stacks/semaphore/compose.yaml on a
 # throwaway Traefik, with stubs that say their name in place of the backend and the front. /ws and /api/ go to the
-# backend, PUT /api/me is limited and capped, everything else, path tricks included, stays with the front.
+# backend, PUT /api/me is limited and capped, /api/auth is limited, everything else, path tricks included, stays
+# with the front.
 # Needs Docker, curl and nothing else; takes about a minute.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
-export PASSWORD_HASH=test
+export PASSWORD_HASH=test OAUTH_HASH=test
 compose="docker compose -p edgetest -f stacks/semaphore/compose.yaml -f tests/semaphore-edge/compose.yaml"
 traefik=$(docker compose -f stacks/traefik/compose.yaml config --images | grep '^traefik:')
 failures=0
@@ -54,7 +55,10 @@ done
 
 expect "the front serves the page" GET / 200 front
 expect "the backend serves /api/me" GET /api/me 200 backend
-expect "the backend serves what is under /api/" GET /api/auth/github 200 backend
+expect "the backend serves what is under /api/" GET /api/other 200 backend
+expect "the backend serves the start of a login" GET /api/auth/login/github 200 backend
+expect "the backend serves /api/auth itself" GET /api/auth 200 backend
+expect "/api/authx is not the sign-in" GET /api/authx 200 backend
 expect "the backend serves /ws" GET /ws 200 backend
 expect "/api alone stays with the front" GET /api 200 front
 expect "/apix stays with the front" GET /apix 200 front
@@ -87,6 +91,26 @@ if [[ "$other" == 200 ]]; then
   echo "ok   another address has its own bucket"
 else
   echo "FAIL another address got $other, wanted 200"
+  failures=$((failures + 1))
+fi
+
+# The sign-in's bucket holds 40 (burst) and the two requests above took 2; it refills one every 30 seconds.
+sent=0
+while [[ "$(call GET /api/auth/callback/github)" == 200 ]]; do sent=$((sent + 1)); [[ $sent -lt 80 ]] || break; done
+if [[ $sent -ge 37 && $sent -le 40 ]]; then
+  echo "ok   /api/auth is refused with 429 once the burst is spent ($((sent + 2)) went through)"
+else
+  echo "FAIL /api/auth: $sent more went through after the first two, wanted about 38 and then 429"
+  failures=$((failures + 1))
+fi
+expect "DELETE under /api/auth is limited too" DELETE /api/auth/account 429 ""
+expect "the rest of /api is not limited by it" GET /api/me 200 backend
+other=$(docker run --rm --network edgetest-edge curlimages/curl:8.11.1 -s -o /dev/null -w '%{http_code}' \
+  -H 'Host: play.didelo.fr' http://edgetest-traefik/api/auth/login/github)
+if [[ "$other" == 200 ]]; then
+  echo "ok   another address has its own sign-in bucket"
+else
+  echo "FAIL another address got $other on /api/auth, wanted 200"
   failures=$((failures + 1))
 fi
 

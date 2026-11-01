@@ -74,7 +74,7 @@ flowchart LR
   traefik -->|"edge network"| hello
   traefik -->|"edge network"| ds
   traefik -->|"play.didelo.fr,<br/>everything but /ws and /api/"| play
-  traefik -->|"play.didelo.fr/ws and /api/,<br/>24 open /ws per IP,<br/>PUT /api/me 60 an hour per IP"| sem
+  traefik -->|"play.didelo.fr/ws and /api/,<br/>24 open /ws per IP,<br/>PUT /api/me 60 an hour<br/>and /api/auth 120 an hour per IP"| sem
   sem -->|"game network, internal,<br/>rooms, pub/sub"| redis
   sem -.->|"game network, internal,<br/>JDBC, once the backend reads it"| pg
   graf --> prom

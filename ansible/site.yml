@@ -384,10 +384,11 @@
             group: "10001"
             mode: "0440"
 
-    # The backend reads the Redis and Postgres passwords at start only and Compose does not see a bind-mounted file
-    # change: the hash of the two, in a label, makes it recreate the replicas when either changes.
-    # World-readable on purpose: deploy-app runs Compose as the `deploy` user, which reads this file (the hash of two
-    # random 256-bit values tells nothing about them). Redis and Postgres have no such reader, so their files stay 0600.
+    # The backend reads its secrets at start only and Compose does not see a bind-mounted file change: a hash in a label
+    # makes it recreate the replicas when one changes. PASSWORD_HASH covers the Redis and Postgres passwords and
+    # OAUTH_HASH the four values of the sign-in (the ids and secrets of the OAuth applications, empty until registered).
+    # World-readable on purpose: deploy-app runs Compose as the `deploy` user, which reads this file (the hash of random
+    # secrets tells nothing about them). Redis and Postgres have no such reader, so their files stay 0600.
     - name: Write the semaphore settings
       when: not ansible_check_mode
       no_log: true
@@ -395,7 +396,12 @@
         secrets: "{{ lookup('community.sops.sops', playbook_dir ~ '/../secrets/production.sops.yaml') | from_yaml }}"
       ansible.builtin.copy:
         dest: /srv/stacks/semaphore/.env
-        content: "PASSWORD_HASH={{ (secrets.REDIS_PASSWORD ~ secrets.POSTGRES_PASSWORD) | hash('sha256') }}\n"
+        content: |
+          PASSWORD_HASH={{ (secrets.REDIS_PASSWORD ~ secrets.POSTGRES_PASSWORD) | hash('sha256') }}
+          OAUTH_HASH={{ [secrets.GITHUB_CLIENT_ID | default('', true),
+            secrets.GITHUB_CLIENT_SECRET | default('', true),
+            secrets.GOOGLE_CLIENT_ID | default('', true),
+            secrets.GOOGLE_CLIENT_SECRET | default('', true)] | join('|') | hash('sha256') }}
         owner: root
         group: root
         mode: "0644" # NOSONAR a hash that is not a secret, read by the deploy user
