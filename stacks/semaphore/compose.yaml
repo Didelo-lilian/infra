@@ -21,8 +21,9 @@ services:
     # The Redis address holds its password and the database password has a file of its own: Spring reads each secret file
     # as the property of the same name (semaphore.redis-url, spring.datasource.password), so they are in neither this
     # file nor `docker inspect`. The four of the sign-in are the same (semaphore.auth.<provider>.client-id and
-    # .client-secret): a provider whose two files are empty is off, and the game plays for guests. The database address and user are not secret, and Flyway logs the address, which is why
-    # the password is not in it. An image that does not read these properties ignores them.
+    # .client-secret): a provider whose two files are empty is off, and the game plays for guests. The database address
+    # and user are not secret, and Flyway logs the address, which is why the password is not in it. An image that does not
+    # read these properties ignores them.
     environment:
       SPRING_CONFIG_IMPORT: configtree:/run/secrets/
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/semaphore
