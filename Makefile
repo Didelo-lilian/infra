@@ -7,7 +7,7 @@ TF = terraform -chdir=terraform
 PLAYBOOK = cd ansible && ansible-playbook site.yml --diff
 DOCKER = docker run --rm -v "$(CURDIR):/repo" -w /repo
 
-.PHONY: check check-monitoring check-secrets check-scripts test-deploy-app plan apply server-diff server server-bootstrap grafana
+.PHONY: check check-monitoring check-secrets check-scripts test-deploy-app test-semaphore-edge plan apply server-diff server server-bootstrap grafana
 
 # Images come from the compose file, so Dependabot bumps the checks along with the stack.
 MONITORING = stacks/monitoring
@@ -27,8 +27,12 @@ check-secrets:
 test-deploy-app:
 	./tests/deploy-app/run.sh
 
+# Brought up with Docker and thrown away: the labels of stacks/semaphore on a Traefik, with stubs for the backend and the front.
+test-semaphore-edge:
+	./tests/semaphore-edge/run.sh
+
 check-scripts:
-	$(DOCKER) koalaman/shellcheck:v0.11.0 scripts/deploy-app tests/deploy-app/run.sh
+	$(DOCKER) koalaman/shellcheck:v0.11.0 scripts/deploy-app tests/deploy-app/run.sh tests/semaphore-edge/run.sh
 
 check: check-monitoring check-secrets check-scripts
 	$(TF) fmt -check -recursive
