@@ -1,0 +1,33 @@
+# Laid over stacks/semaphore/compose.yaml by run.sh: the labels of the real file stay, the backend becomes a stub that
+# says its hostname, and a second stub plays the front on the same host (stacks/play/compose.yaml).
+services:
+  semaphore:
+    image: traefik/whoami:v1.11
+    pull_policy: missing
+    hostname: backend
+    command: [--port, "8080"]
+    environment: !reset {}
+    secrets: !reset []
+    healthcheck:
+      disable: true
+    deploy:
+      replicas: 1
+    networks: !override [edge]
+  front:
+    image: traefik/whoami:v1.11
+    pull_policy: missing
+    hostname: front
+    command: [--port, "8080"]
+    networks: [edge]
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.play.rule: Host(`play.didelo.fr`)
+      traefik.http.services.play.loadbalancer.server.port: "8080"
+
+secrets: !reset {}
+
+networks:
+  edge:
+    external: true
+    name: edgetest-edge
+  game: !reset {}

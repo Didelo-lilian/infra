@@ -1,6 +1,6 @@
 # 15. The game behind the edge
 
-Date: 2026-10-24 · Status: accepted
+Date: 2026-10-24 · Status: accepted · Amended by [ADR 0022](0022-the-games-http-api-behind-the-edge.md): the backend also takes `/api/`
 
 ## Context
 
