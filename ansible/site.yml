@@ -369,7 +369,7 @@
         secrets: "{{ lookup('community.sops.sops', playbook_dir ~ '/../secrets/production.sops.yaml') | from_yaml }}"
       ansible.builtin.copy:
         dest: /srv/stacks/semaphore/secrets/semaphore.auth.{{ item.provider }}.{{ item.part }}
-        content: "{{ secrets[item.key] | default('') }}"
+        content: "{{ secrets[item.key] | default('', true) }}"
         owner: root
         group: "10001"
         mode: "0440"

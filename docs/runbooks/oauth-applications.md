@@ -56,7 +56,7 @@ GOOGLE_CLIENT_ID: "<from Google>"
 GOOGLE_CLIENT_SECRET: "<from Google>"
 ```
 
-Open a pull request (`chore(secrets): add the OAuth client settings of the game`) and merge it. The dry run cannot see secrets, so run the **Server** workflow by hand with `force` and approve it: the task `Write the sign-in settings` writes one file per value in `/srv/stacks/semaphore/secrets/` and shows `changed`. The backend reads them once the sign-in code is deployed.
+Open a pull request (`chore(secrets): add the OAuth client settings of the game`) and merge it. The dry run cannot see secrets, so run the **Server** workflow by hand with `force` and approve it: the task `Write the sign-in settings` writes one file per value in `/srv/stacks/semaphore/secrets/` and shows `changed`. Nothing reads them yet: the backend does once the sign-in code is deployed and a later change of `stacks/semaphore` mounts the files and adds them to the hash label. Until then a run with `force` only rewrites the files and restarts nothing.
 
 A provider can be added alone: leave the other two lines out and its two files stay empty.
 
