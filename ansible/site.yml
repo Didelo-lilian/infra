@@ -538,22 +538,22 @@
               that failed" in docs/runbooks/rotate-secrets.md.
             quiet: true
 
-        # The password is in the statement on stdin: a command line or an environment variable can be read in a process
-        # list. The two SET keep the statement out of the server log, which prints it when it fails or runs long. A failure
-        # shows nothing (no_log): run the statement by hand with `docker exec` to read the error.
+        # The loop lists the names, not the passwords: Ansible templates a loop before it evaluates `when`, so a secret in
+        # it would run the SOPS lookup in the dry run too, which has no `sops` and no age key. `stdin` is templated only for
+        # a task that runs. The password is in the statement on stdin: a command line or an environment variable can be read
+        # in a process list. The two SET keep the statement out of the server log, which prints it when it fails or runs
+        # long. A failure shows nothing (no_log): run the statement by hand with `docker exec` to read the error.
         - name: Set the password of each role
           no_log: true
           ansible.builtin.command: >-
             docker exec -i postgres-postgres-1
-            psql --no-psqlrc -v ON_ERROR_STOP=1 -v role={{ item.role }} -U postgres -d postgres -f -
+            psql --no-psqlrc -v ON_ERROR_STOP=1 -v role={{ item }} -U postgres -d postgres -f -
           args:
             stdin: |
               SET log_min_error_statement = panic;
               SET log_min_duration_statement = -1;
-              ALTER ROLE :"role" PASSWORD '{{ item.password | replace("'", "''") }}';
-          loop:
-            - { role: postgres, password: "{{ secrets.POSTGRES_ADMIN_PASSWORD }}" }
-            - { role: semaphore, password: "{{ secrets.POSTGRES_PASSWORD }}" }
+              ALTER ROLE :"role" PASSWORD '{{ (secrets.POSTGRES_ADMIN_PASSWORD if item == "postgres" else secrets.POSTGRES_PASSWORD) | replace("'", "''") }}';
+          loop: [postgres, semaphore]
           changed_when: false
 
     - name: Start the backend
