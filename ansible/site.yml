@@ -494,53 +494,70 @@
         project_src: /srv/stacks/{{ item }}
         remove_orphans: true
       # Traefik first: it creates the edge network the other stacks join. Redis before Postgres: it creates the game one.
-      # The backend comes after the passwords are set (below), so that it never starts with one the database lacks.
-      loop: [traefik, crowdsec, hello, ds, redis, postgres]
+      # Only the backend waits for the passwords (below), so that it never starts with one the database lacks: the front
+      # and the monitoring do not need Postgres, and a Postgres that fails to start must still be seen by the alerts.
+      loop: [traefik, crowdsec, hello, ds, play, redis, postgres, monitoring]
       # In --check mode the stacks are not really copied yet.
       ignore_errors: "{{ ansible_check_mode }}"
 
     # Postgres keeps its passwords in the database, not in a file it reads at start: the image sets the superuser's at the
     # first start only and the init script creates `semaphore` without one (stacks/postgres/initdb). So every run sets
-    # both, from stdin and the environment so that neither shows in a process list: a rotation needs no restart of
-    # Postgres, only of the backend (the hash in its label). It prints nothing: setting a password to its own value is not news.
+    # both: a rotation needs no restart of Postgres, only of the backend (the hash in its label). The tasks that handle
+    # the passwords have `no_log`, the others do not, so that a failure to wait or to find the role can be read.
     - name: Set the Postgres passwords
       when: not ansible_check_mode
-      no_log: true
       vars:
         secrets: "{{ lookup('community.sops.sops', playbook_dir ~ '/../secrets/production.sops.yaml') | from_yaml }}"
       block:
+        # As the backend's role: `pg_hba.conf` rejects the superuser, and every rejected probe is a FATAL line in the log.
         - name: Wait for Postgres to accept connections
-          ansible.builtin.command: docker exec postgres-postgres-1 pg_isready -h 127.0.0.1 -q
+          ansible.builtin.command: docker exec postgres-postgres-1 pg_isready -h 127.0.0.1 -U semaphore -d semaphore -q
           register: postgres_ready
           until: postgres_ready.rc == 0
           retries: 30
           delay: 2
           changed_when: false
 
-        # `-e NAME` without a value hands the container the variable of this command's environment.
-        - name: Set the password of each role
+        # The image skips the init scripts as soon as the data directory exists, so a first start that died half-way
+        # leaves a server without the role for good.
+        - name: Look for the backend's role
           ansible.builtin.command: >-
-            docker exec -i -e ROLE_NAME -e ROLE_PASSWORD postgres-postgres-1
-            psql --no-psqlrc -v ON_ERROR_STOP=1 -U postgres -d postgres -f -
+            docker exec postgres-postgres-1
+            psql --no-psqlrc -U postgres -d postgres -At -c "select 1 from pg_roles where rolname = 'semaphore'"
+          register: postgres_role
+          changed_when: false
+
+        - name: Check that the first start created it
+          ansible.builtin.assert:
+            that: postgres_role.stdout == "1"
+            fail_msg: >-
+              Postgres runs without the semaphore role: its first start did not finish, and the image will not run the init
+              scripts again. See "A first start that failed" in docs/runbooks/rotate-secrets.md.
+            quiet: true
+
+        # The password is in the statement on stdin: a command line or an environment variable can be read in a process
+        # list. The two SET keep the statement out of the server log, which prints it when it fails or runs long. A failure
+        # shows nothing (no_log): run the statement by hand with `docker exec` to read the error.
+        - name: Set the password of each role
+          no_log: true
+          ansible.builtin.command: >-
+            docker exec -i postgres-postgres-1
+            psql --no-psqlrc -v ON_ERROR_STOP=1 -v role={{ item.role }} -U postgres -d postgres -f -
           args:
             stdin: |
-              \getenv role ROLE_NAME
-              \getenv pw ROLE_PASSWORD
-              ALTER ROLE :"role" PASSWORD :'pw';
-          environment:
-            ROLE_NAME: "{{ item.role }}"
-            ROLE_PASSWORD: "{{ item.password }}"
+              SET log_min_error_statement = panic;
+              SET log_min_duration_statement = -1;
+              ALTER ROLE :"role" PASSWORD '{{ item.password | replace("'", "''") }}';
           loop:
             - { role: postgres, password: "{{ secrets.POSTGRES_ADMIN_PASSWORD }}" }
             - { role: semaphore, password: "{{ secrets.POSTGRES_PASSWORD }}" }
           changed_when: false
 
-    - name: Start the apps and the monitoring
+    - name: Start the backend
       community.docker.docker_compose_v2:
-        project_src: /srv/stacks/{{ item }}
+        project_src: /srv/stacks/semaphore
         remove_orphans: true
-      loop: [semaphore, play, monitoring]
-      # In --check mode the stacks are not really copied yet.
+      # In --check mode the stack is not really copied yet.
       ignore_errors: "{{ ansible_check_mode }}"
 
     # Grafana cannot provision a public dashboard from a file, only create it through its API (ADR 0014).

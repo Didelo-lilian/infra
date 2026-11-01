@@ -21,7 +21,19 @@ There is no provider to revoke it at: generate the new value with `openssl rand 
 
 ## Rotate the Postgres passwords
 
-Generate each new value with `openssl rand -hex 32` and set `POSTGRES_PASSWORD` (the backend's role `semaphore`) or `POSTGRES_ADMIN_PASSWORD` (the superuser, which only `docker exec` uses) as in "Change the value of a secret". Postgres keeps its passwords in the database, so the **Server** run with `force` does not restart it: its `Set the Postgres passwords` task runs `ALTER ROLE` for both roles and prints nothing. For `POSTGRES_PASSWORD` the same run rewrites the backend's password file and the hash in its label, so Compose recreates the replicas (the `semaphore` item of `Start the apps and the monitoring` shows as `changed`) and every game in progress ends: rotate when nobody is playing. Between the `ALTER` and the restart the new connections of a replica that still holds the old password fail; its pool reconnects once it restarts. To check: `docker exec postgres-postgres-1 psql -U postgres -c '\du'` lists the roles, and a connection with the old password must be refused.
+Generate each new value with `openssl rand -hex 32` and set `POSTGRES_PASSWORD` (the backend's role `semaphore`) or `POSTGRES_ADMIN_PASSWORD` (the superuser, which only `docker exec` uses) as in "Change the value of a secret". Postgres keeps its passwords in the database, so the **Server** run with `force` does not restart it: its `Set the Postgres passwords` task runs `ALTER ROLE` for both roles and prints nothing. For `POSTGRES_PASSWORD` the same run rewrites the backend's password file and the hash in its label, so Compose recreates the replicas (`Start the backend` shows as `changed`) and every game in progress ends: rotate when nobody is playing. Between the `ALTER` and the restart the new connections of a replica that still holds the old password fail; its pool reconnects once it restarts. To check: `docker exec postgres-postgres-1 psql -U postgres -c '\du'` lists the roles, and a connection with the old password must be refused.
+
+## A first start of Postgres that failed
+
+The image runs the scripts of `stacks/postgres/initdb` at the very first start only: as soon as the data directory exists it skips them. A first start that died half-way (a full disk, a script that failed) leaves a server without the `semaphore` role or without the `pg_hba.conf` line that rejects the superuser, and a new run does not repair it. The **Server** run stops at `Check that the first start created it`, before `Start the backend`: the replicas that run are untouched.
+
+If nothing has been written to the database yet (before the first deploy that reads it), start again from nothing, on the server:
+
+```bash
+cd /srv/stacks/postgres && docker compose down --volumes
+```
+
+Then run **Server** again: the volume is created and the scripts run. Once the game has stored accounts, do not delete anything: `docker exec -it postgres-postgres-1 psql -U postgres` and create what is missing by hand, from `stacks/postgres/initdb`, then run **Server**.
 
 ## Rotate the CI key (planned, no suspicion)
 
