@@ -519,20 +519,23 @@
           changed_when: false
 
         # The image skips the init scripts as soon as the data directory exists, so a first start that died half-way
-        # leaves a server without the role for good.
-        - name: Look for the backend's role
+        # leaves a server without the role, or with the superuser open to the network, for good.
+        - name: Look for what the first start creates
           ansible.builtin.command: >-
             docker exec postgres-postgres-1
-            psql --no-psqlrc -U postgres -d postgres -At -c "select 1 from pg_roles where rolname = 'semaphore'"
-          register: postgres_role
+            psql --no-psqlrc -U postgres -d postgres -At -c "select
+            (select count(*) from pg_roles where rolname = 'semaphore') = 1
+            and (select count(*) from pg_hba_file_rules where auth_method = 'reject' and user_name = '{postgres}') = 1"
+          register: postgres_init
           changed_when: false
 
-        - name: Check that the first start created it
+        - name: Check that the first start finished
           ansible.builtin.assert:
-            that: postgres_role.stdout == "1"
+            that: postgres_init.stdout == "t"
             fail_msg: >-
-              Postgres runs without the semaphore role: its first start did not finish, and the image will not run the init
-              scripts again. See "A first start that failed" in docs/runbooks/rotate-secrets.md.
+              Postgres runs without the semaphore role or without the line of pg_hba.conf that rejects the superuser: its
+              first start did not finish, and the image will not run the init scripts again. See "A first start of Postgres
+              that failed" in docs/runbooks/rotate-secrets.md.
             quiet: true
 
         # The password is in the statement on stdin: a command line or an environment variable can be read in a process

@@ -25,7 +25,7 @@ Generate each new value with `openssl rand -hex 32` and set `POSTGRES_PASSWORD` 
 
 ## A first start of Postgres that failed
 
-The image runs the scripts of `stacks/postgres/initdb` at the very first start only: as soon as the data directory exists it skips them. A first start that died half-way (a full disk, a script that failed) leaves a server without the `semaphore` role or without the `pg_hba.conf` line that rejects the superuser, and a new run does not repair it. The **Server** run stops at `Check that the first start created it`, before `Start the backend`: the replicas that run are untouched.
+The image runs the scripts of `stacks/postgres/initdb` at the very first start only: as soon as the data directory exists it skips them. A first start that died half-way (a full disk, a script that failed) leaves a server without the `semaphore` role or without the `pg_hba.conf` line that rejects the superuser, and a new run does not repair it. The **Server** run stops at `Check that the first start finished`, before `Start the backend`: the replicas that run are untouched.
 
 If nothing has been written to the database yet (before the first deploy that reads it), start again from nothing, on the server:
 
