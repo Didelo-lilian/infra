@@ -20,13 +20,20 @@ services:
     security_opt: [no-new-privileges:true]
     # The Redis address holds its password and the database password has a file of its own: Spring reads each secret file
     # as the property of the same name (semaphore.redis-url, spring.datasource.password), so they are in neither this
-    # file nor `docker inspect`. The database address and user are not secret, and Flyway logs the address, which is why
+    # file nor `docker inspect`. The four of the sign-in are the same (semaphore.auth.<provider>.client-id and
+    # .client-secret): a provider whose two files are empty is off, and the game plays for guests. The database address and user are not secret, and Flyway logs the address, which is why
     # the password is not in it. An image that does not read these properties ignores them.
     environment:
       SPRING_CONFIG_IMPORT: configtree:/run/secrets/
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/semaphore
       SPRING_DATASOURCE_USERNAME: semaphore
-    secrets: [semaphore.redis-url, spring.datasource.password]
+    secrets:
+      - semaphore.redis-url
+      - spring.datasource.password
+      - semaphore.auth.github.client-id
+      - semaphore.auth.github.client-secret
+      - semaphore.auth.google.client-id
+      - semaphore.auth.google.client-secret
     # About 115 MiB at rest; the JVM sizes its heap at 75% of this limit.
     mem_limit: 384m
     healthcheck:
@@ -36,9 +43,10 @@ services:
       timeout: 5s
       retries: 3
     labels:
-      # The backend reads the secrets at start only and Compose does not see a bind-mounted file change: the hash of the
-      # passwords, written by Ansible, makes it recreate the replicas when one changes.
+      # The backend reads the secrets at start only and Compose does not see a bind-mounted file change: the hashes of
+      # the passwords and of the OAuth values, written by Ansible, make it recreate the replicas when one changes.
       password.hash: ${PASSWORD_HASH}
+      oauth.hash: ${OAUTH_HASH}
       traefik.enable: "true"
       # Only the WebSocket and the HTTP API: everything else on play.didelo.fr is the front's (stacks/play). The explicit
       # priorities keep these routers above the front's catch-all, whatever the length of the rules.
@@ -49,7 +57,7 @@ services:
       # connection: 24 is two full rooms behind one address (a family, a class, an office), reconnections included.
       traefik.http.middlewares.semaphore-ws-cap.inflightreq.amount: "24"
       traefik.http.middlewares.semaphore-ws-cap.inflightreq.sourcecriterion.ipstrategy.depth: "0"
-      # The HTTP API (/api/me today, the sign-in later). The slash keeps /apix and /api with the front, and only what is
+      # The HTTP API (/api/me and the sign-in under /api/auth). The slash keeps /apix and /api with the front, and only what is
       # under /api/ reaches the backend: not its actuator (ADR 0022).
       traefik.http.routers.semaphore-api.rule: Host(`play.didelo.fr`) && PathPrefix(`/api/`)
       traefik.http.routers.semaphore-api.priority: "100"
@@ -68,6 +76,19 @@ services:
       traefik.http.middlewares.semaphore-guest-limit.ratelimit.sourcecriterion.ipstrategy.depth: "0"
       # The body is {"name": "…"}, 20 characters at most (a few dozen bytes, 130 if every one is escaped).
       traefik.http.middlewares.semaphore-guest-body.buffering.maxrequestbodybytes: "1024"
+      # The sign-in (/api/auth: the start of a login, its callback, logout, deletion). A login in flight is a key of
+      # about 700 bytes kept 10 minutes in the same Valkey, and every callback asks the provider for a token: 120 an
+      # hour per IP after a burst of 40 is 20 logins at once (a class) and then one a minute. Both ends of a login count,
+      # so the burst is twice the people. A refused request lands on Traefik's 429, and the player tries again later.
+      traefik.http.routers.semaphore-auth.rule: Host(`play.didelo.fr`) && (Path(`/api/auth`) || PathPrefix(`/api/auth/`))
+      traefik.http.routers.semaphore-auth.priority: "110"
+      traefik.http.routers.semaphore-auth.middlewares: semaphore-auth-limit,semaphore-auth-body
+      traefik.http.middlewares.semaphore-auth-limit.ratelimit.average: "120"
+      traefik.http.middlewares.semaphore-auth-limit.ratelimit.period: 1h
+      traefik.http.middlewares.semaphore-auth-limit.ratelimit.burst: "40"
+      traefik.http.middlewares.semaphore-auth-limit.ratelimit.sourcecriterion.ipstrategy.depth: "0"
+      # None of these requests has a body.
+      traefik.http.middlewares.semaphore-auth-body.buffering.maxrequestbodybytes: "1024"
       traefik.http.services.semaphore.loadbalancer.server.port: "8080"
 
 secrets:
@@ -75,6 +96,14 @@ secrets:
     file: ./secrets/semaphore.redis-url
   spring.datasource.password:
     file: ./secrets/spring.datasource.password
+  semaphore.auth.github.client-id:
+    file: ./secrets/semaphore.auth.github.client-id
+  semaphore.auth.github.client-secret:
+    file: ./secrets/semaphore.auth.github.client-secret
+  semaphore.auth.google.client-id:
+    file: ./secrets/semaphore.auth.google.client-id
+  semaphore.auth.google.client-secret:
+    file: ./secrets/semaphore.auth.google.client-secret
 
 networks:
   edge:
