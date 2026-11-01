@@ -1,0 +1,18 @@
+# Laid next to stacks/traefik/dynamic/crowdsec.yml by run.sh: two hosts behind the real bouncer, a stub behind each.
+http:
+  routers:
+    game:
+      rule: Host(`play.didelo.fr`)
+      entryPoints: [web]
+      middlewares: [crowdsec@file]
+      service: stub
+    other:
+      rule: Host(`other.didelo.fr`)
+      entryPoints: [web]
+      middlewares: [crowdsec@file]
+      service: stub
+  services:
+    stub:
+      loadBalancer:
+        servers:
+          - url: http://wafstub:80
