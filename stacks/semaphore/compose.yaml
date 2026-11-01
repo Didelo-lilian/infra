@@ -40,8 +40,8 @@ services:
       # passwords, written by Ansible, makes it recreate the replicas when one changes.
       password.hash: ${PASSWORD_HASH}
       traefik.enable: "true"
-      # Only the WebSocket: everything else on play.didelo.fr is the front's (stacks/play). The explicit priority keeps
-      # this router above the front's catch-all, whatever the length of the two rules.
+      # Only the WebSocket and the HTTP API: everything else on play.didelo.fr is the front's (stacks/play). The explicit
+      # priorities keep these routers above the front's catch-all, whatever the length of the rules.
       traefik.http.routers.semaphore.rule: Host(`play.didelo.fr`) && Path(`/ws`)
       traefik.http.routers.semaphore.priority: "100"
       traefik.http.routers.semaphore.middlewares: semaphore-ws-cap
@@ -49,6 +49,25 @@ services:
       # connection: 24 is two full rooms behind one address (a family, a class, an office), reconnections included.
       traefik.http.middlewares.semaphore-ws-cap.inflightreq.amount: "24"
       traefik.http.middlewares.semaphore-ws-cap.inflightreq.sourcecriterion.ipstrategy.depth: "0"
+      # The HTTP API (/api/me today, the sign-in later). The slash keeps /apix and /api with the front, and only what is
+      # under /api/ reaches the backend: not its actuator (ADR 0022).
+      traefik.http.routers.semaphore-api.rule: Host(`play.didelo.fr`) && PathPrefix(`/api/`)
+      traefik.http.routers.semaphore-api.priority: "100"
+      # PUT /api/me writes a session (about 830 bytes, kept 7 days) in the Valkey that also holds the rooms, for every
+      # browser that has none. The entry point's 30 a second per IP would let one address fill it in days: this router
+      # is above the previous one and lets 60 an hour through, after a burst of 30 (a class choosing its pseudos),
+      # which is 8 MB a week at most for one address. A refused PUT is not a lockout: the front asks for the name in
+      # each room, as it did before guests.
+      traefik.http.routers.semaphore-guest.rule: Host(`play.didelo.fr`) && Path(`/api/me`) && Method(`PUT`)
+      traefik.http.routers.semaphore-guest.priority: "110"
+      traefik.http.routers.semaphore-guest.middlewares: semaphore-guest-limit,semaphore-guest-body
+      traefik.http.middlewares.semaphore-guest-limit.ratelimit.average: "60"
+      traefik.http.middlewares.semaphore-guest-limit.ratelimit.period: 1h
+      traefik.http.middlewares.semaphore-guest-limit.ratelimit.burst: "30"
+      # Per client IP, as the entry point's: without a criterion Traefik counts per request host.
+      traefik.http.middlewares.semaphore-guest-limit.ratelimit.sourcecriterion.ipstrategy.depth: "0"
+      # The body is {"name": "…"}, 20 characters at most (a few dozen bytes, 130 if every one is escaped).
+      traefik.http.middlewares.semaphore-guest-body.buffering.maxrequestbodybytes: "1024"
       traefik.http.services.semaphore.loadbalancer.server.port: "8080"
 
 secrets:
