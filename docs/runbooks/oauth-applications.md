@@ -31,12 +31,28 @@ The backend keeps nothing but the provider's user id: no e-mail, no name, no ava
    - **App name**: `Sémaphore`; **support e-mail** and **contact e-mail**: yours.
    - **Audience**: External.
    - **Data access**: the scope `openid` only (a non-sensitive scope: no review by Google is expected for it).
-   - **Authorized domain**: `didelo.fr`.
-3. Publish the app (Audience → **Publish app**, status "In production"). In "Testing" only the listed test users can sign in.
+   - **Branding**: the values of the table below, with the authorized domain `didelo.fr`.
+3. Publish the app (Audience → **Publish app**, status "In production") once the three addresses of the table answer in a private window. In "Testing" only the listed test users can sign in.
 4. Clients → Create client → **Web application**, named `semaphore`:
    - **Authorized redirect URIs**: `https://play.didelo.fr/api/auth/callback/google`
    - No JavaScript origin is needed: the exchange happens on the server.
 5. Copy the **Client ID** and the **Client secret** from the dialog now: Google may not show the secret again.
+
+### Google's branding values
+
+An app in production needs a home page that describes it, a privacy policy and terms of use, on a domain declared as authorized. The three pages are routes of the front, so they are live as soon as it is deployed.
+
+| Field | Value |
+|---|---|
+| App logo | `front/public/logo-120.png` of the `semaphore` repository (PNG, 120×120, under 1 MB; Google takes a file, not an address) |
+| Application home page | `https://play.didelo.fr` |
+| Application privacy policy link | `https://play.didelo.fr/privacy` |
+| Application terms of service link | `https://play.didelo.fr/terms` |
+| Authorized domains | `didelo.fr` |
+
+The privacy and terms links must be the same on the home page and on the consent screen: Google checks that they match. The home page links to both from its footer, so these two addresses do not change without the front changing too.
+
+The GitHub application can take the same logo (optional): `front/public/logo-512.png` on its page, under **Application logo**.
 
 ## Store the four values
 
