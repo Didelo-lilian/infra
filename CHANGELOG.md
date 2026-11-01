@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.4.0](https://github.com/Didelo-lilian/infra/compare/v0.3.0...v0.4.0) (2026-11-01)
+
+
+### Features
+
+* **postgres:** run PostgreSQL for the game's accounts and history ([#97](https://github.com/Didelo-lilian/infra/issues/97)) ([80bbdad](https://github.com/Didelo-lilian/infra/commit/80bbdadc34732c1ecc66676c3ca71297143c6905))
+* **semaphore:** mount the OAuth values and limit /api/auth ([#108](https://github.com/Didelo-lilian/infra/issues/108)) ([8e6fcd6](https://github.com/Didelo-lilian/infra/commit/8e6fcd69651b99e1663170fe42dbee68ae0a9b18))
+* **semaphore:** route /api to the backend with a strict limit on guest creation ([#105](https://github.com/Didelo-lilian/infra/issues/105)) ([228bd59](https://github.com/Didelo-lilian/infra/commit/228bd59b8e7e34ddcd16a2d222d4f757539d456b))
+* **semaphore:** write the sign-in settings from SOPS ([#96](https://github.com/Didelo-lilian/infra/issues/96)) ([00f51e1](https://github.com/Didelo-lilian/infra/commit/00f51e1877d01d4fc69ad02e88418a1ca2932db0))
+
+
+### Bug fixes
+
+* **postgres:** keep the passwords out of the loop of the password task ([#106](https://github.com/Didelo-lilian/infra/issues/106)) ([2e83e58](https://github.com/Didelo-lilian/infra/commit/2e83e5881369da46e19c3b1ea24df5be2d60d6db))
+* **waf:** let PUT and DELETE under /api/ through the WAF ([#110](https://github.com/Didelo-lilian/infra/issues/110)) ([6257c56](https://github.com/Didelo-lilian/infra/commit/6257c565ec05d8e25dd2ddc3213d1ed6d433ebf5))
+
+
+### Documentation
+
+* add Google's branding values to the OAuth runbook ([#103](https://github.com/Didelo-lilian/infra/issues/103)) ([719092d](https://github.com/Didelo-lilian/infra/commit/719092d745c3df0088f60852ddd917f05cf5b7b6))
+
 ## [0.3.0](https://github.com/Didelo-lilian/infra/compare/v0.2.0...v0.3.0) (2026-10-25)
 
 
