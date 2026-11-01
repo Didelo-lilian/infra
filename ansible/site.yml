@@ -302,6 +302,14 @@
         group: root
         mode: "0700"
 
+    - name: Create the Postgres secrets directory
+      ansible.builtin.file:
+        path: /srv/stacks/postgres/secrets
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
     - name: Create the semaphore secrets directory
       ansible.builtin.file:
         path: /srv/stacks/semaphore/secrets
@@ -347,15 +355,50 @@
             group: "10001"
             mode: "0440"
 
-        # World-readable on purpose: deploy-app runs Compose as the `deploy` user, which reads this file (the hash of a
-        # random 256-bit value tells nothing about it). Redis has no such reader, so its own file stays 0600.
-        - name: Write the semaphore settings
+    # Group 70 is the one the Postgres image runs as. The superuser's password is read at the first start only and is
+    # never used over the network (stacks/postgres/initdb); the backend's goes into a secret file. Both are set in the
+    # database itself by the task after the stacks start, which is why neither needs a hash to recreate the container.
+    # shortcut: the dry run has no age key, so the passwords are only read and written for real.
+    # A rotation does not show in the diff: run the workflow by hand with `force`.
+    - name: Store the Postgres passwords
+      when: not ansible_check_mode
+      no_log: true
+      vars:
+        secrets: "{{ lookup('community.sops.sops', playbook_dir ~ '/../secrets/production.sops.yaml') | from_yaml }}"
+      block:
+        - name: Write the Postgres superuser password file
           ansible.builtin.copy:
-            dest: /srv/stacks/semaphore/.env
-            content: "PASSWORD_HASH={{ redis_password | hash('sha256') }}\n"
+            dest: /srv/stacks/postgres/secrets/postgres_admin_password
+            content: "{{ secrets.POSTGRES_ADMIN_PASSWORD }}"
             owner: root
-            group: root
-            mode: "0644" # NOSONAR a hash that is not a secret, read by the deploy user
+            group: "70"
+            mode: "0440"
+
+        # The backend takes the password from this file, the address and the user from its environment (stacks/semaphore):
+        # Flyway logs the address, so the password stays out of it. Group 10001 is the one its container runs as.
+        - name: Write the backend's database password
+          ansible.builtin.copy:
+            dest: /srv/stacks/semaphore/secrets/spring.datasource.password
+            content: "{{ secrets.POSTGRES_PASSWORD }}"
+            owner: root
+            group: "10001"
+            mode: "0440"
+
+    # The backend reads the Redis and Postgres passwords at start only and Compose does not see a bind-mounted file
+    # change: the hash of the two, in a label, makes it recreate the replicas when either changes.
+    # World-readable on purpose: deploy-app runs Compose as the `deploy` user, which reads this file (the hash of two
+    # random 256-bit values tells nothing about them). Redis and Postgres have no such reader, so their files stay 0600.
+    - name: Write the semaphore settings
+      when: not ansible_check_mode
+      no_log: true
+      vars:
+        secrets: "{{ lookup('community.sops.sops', playbook_dir ~ '/../secrets/production.sops.yaml') | from_yaml }}"
+      ansible.builtin.copy:
+        dest: /srv/stacks/semaphore/.env
+        content: "PASSWORD_HASH={{ (secrets.REDIS_PASSWORD ~ secrets.POSTGRES_PASSWORD) | hash('sha256') }}\n"
+        owner: root
+        group: root
+        mode: "0644" # NOSONAR a hash that is not a secret, read by the deploy user
 
     # The sign-in of the game (semaphore ADR 0011): the backend reads each file as the property
     # `semaphore.auth.<provider>.client-id` or `.client-secret`, and a blank one means that provider is off. A value that
@@ -450,9 +493,74 @@
       community.docker.docker_compose_v2:
         project_src: /srv/stacks/{{ item }}
         remove_orphans: true
-      # Traefik first: it creates the edge network the other stacks join. Redis before semaphore: it creates the game one.
-      loop: [traefik, crowdsec, hello, ds, redis, semaphore, play, monitoring]
+      # Traefik first: it creates the edge network the other stacks join. Redis before Postgres: it creates the game one.
+      # Only the backend waits for the passwords (below), so that it never starts with one the database lacks: the front
+      # and the monitoring do not need Postgres, and a Postgres that fails to start must still be seen by the alerts.
+      loop: [traefik, crowdsec, hello, ds, play, redis, postgres, monitoring]
       # In --check mode the stacks are not really copied yet.
+      ignore_errors: "{{ ansible_check_mode }}"
+
+    # Postgres keeps its passwords in the database, not in a file it reads at start: the image sets the superuser's at the
+    # first start only and the init script creates `semaphore` without one (stacks/postgres/initdb). So every run sets
+    # both: a rotation needs no restart of Postgres, only of the backend (the hash in its label). The tasks that handle
+    # the passwords have `no_log`, the others do not, so that a failure to wait or to find the role can be read.
+    - name: Set the Postgres passwords
+      when: not ansible_check_mode
+      vars:
+        secrets: "{{ lookup('community.sops.sops', playbook_dir ~ '/../secrets/production.sops.yaml') | from_yaml }}"
+      block:
+        # As the backend's role: `pg_hba.conf` rejects the superuser, and every rejected probe is a FATAL line in the log.
+        - name: Wait for Postgres to accept connections
+          ansible.builtin.command: docker exec postgres-postgres-1 pg_isready -h 127.0.0.1 -U semaphore -d semaphore -q
+          register: postgres_ready
+          until: postgres_ready.rc == 0
+          retries: 30
+          delay: 2
+          changed_when: false
+
+        # The image skips the init scripts as soon as the data directory exists, so a first start that died half-way
+        # leaves a server without the role, or with the superuser open to the network, for good.
+        - name: Look for what the first start creates
+          ansible.builtin.command: >-
+            docker exec postgres-postgres-1
+            psql --no-psqlrc -U postgres -d postgres -At -c "select
+            (select count(*) from pg_roles where rolname = 'semaphore') = 1
+            and (select count(*) from pg_hba_file_rules where auth_method = 'reject' and user_name = '{postgres}') = 1"
+          register: postgres_init
+          changed_when: false
+
+        - name: Check that the first start finished
+          ansible.builtin.assert:
+            that: postgres_init.stdout == "t"
+            fail_msg: >-
+              Postgres runs without the semaphore role or without the line of pg_hba.conf that rejects the superuser: its
+              first start did not finish, and the image will not run the init scripts again. See "A first start of Postgres
+              that failed" in docs/runbooks/rotate-secrets.md.
+            quiet: true
+
+        # The password is in the statement on stdin: a command line or an environment variable can be read in a process
+        # list. The two SET keep the statement out of the server log, which prints it when it fails or runs long. A failure
+        # shows nothing (no_log): run the statement by hand with `docker exec` to read the error.
+        - name: Set the password of each role
+          no_log: true
+          ansible.builtin.command: >-
+            docker exec -i postgres-postgres-1
+            psql --no-psqlrc -v ON_ERROR_STOP=1 -v role={{ item.role }} -U postgres -d postgres -f -
+          args:
+            stdin: |
+              SET log_min_error_statement = panic;
+              SET log_min_duration_statement = -1;
+              ALTER ROLE :"role" PASSWORD '{{ item.password | replace("'", "''") }}';
+          loop:
+            - { role: postgres, password: "{{ secrets.POSTGRES_ADMIN_PASSWORD }}" }
+            - { role: semaphore, password: "{{ secrets.POSTGRES_PASSWORD }}" }
+          changed_when: false
+
+    - name: Start the backend
+      community.docker.docker_compose_v2:
+        project_src: /srv/stacks/semaphore
+        remove_orphans: true
+      # In --check mode the stack is not really copied yet.
       ignore_errors: "{{ ansible_check_mode }}"
 
     # Grafana cannot provision a public dashboard from a file, only create it through its API (ADR 0014).
