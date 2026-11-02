@@ -7,7 +7,7 @@ TF = terraform -chdir=terraform
 PLAYBOOK = cd ansible && ansible-playbook site.yml --diff
 DOCKER = docker run --rm -v "$(CURDIR):/repo" -w /repo
 
-.PHONY: check check-monitoring check-secrets check-scripts test-deploy-app test-semaphore-edge test-crowdsec-waf plan apply server-diff server server-bootstrap grafana
+.PHONY: check check-monitoring check-secrets check-scripts test-deploy-app test-semaphore-edge test-crowdsec-waf test-athlete-panel plan apply server-diff server server-bootstrap grafana
 
 # Images come from the compose file, so Dependabot bumps the checks along with the stack.
 MONITORING = stacks/monitoring
@@ -35,8 +35,12 @@ test-semaphore-edge:
 test-crowdsec-waf:
 	./tests/crowdsec-waf/run.sh
 
+# Brought up with Docker and thrown away: the real athlete-panel stack and its image on a Traefik with the real address, then Caddy alone in front of a stub.
+test-athlete-panel:
+	./tests/athlete-panel/run.sh
+
 check-scripts:
-	$(DOCKER) koalaman/shellcheck:v0.11.0 scripts/deploy-app tests/deploy-app/run.sh tests/semaphore-edge/run.sh tests/crowdsec-waf/run.sh
+	$(DOCKER) koalaman/shellcheck:v0.11.0 scripts/deploy-app tests/deploy-app/run.sh tests/semaphore-edge/run.sh tests/crowdsec-waf/run.sh tests/athlete-panel/run.sh stacks/athlete-panel/bin/env.sh stacks/athlete-panel/bin/restore-test.sh
 
 check: check-monitoring check-secrets check-scripts
 	$(TF) fmt -check -recursive

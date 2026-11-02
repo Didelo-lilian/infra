@@ -1,0 +1,288 @@
+name: athlete-panel
+
+# CONFIG_HASH changes when the Caddyfile does, which makes Compose recreate Caddy: it only reads it at startup, and
+# Ansible replacing the file does not restart anything. SECRETS_HASH does the same for web, worker and backup when the
+# runtime database password or a key changes: they read their secret files at start only.
+
+# The app, built by its own repository (ADR 0023). Pinned by tag and digest, amd64 only: Dependabot bumps both together,
+# in a pull request of its own (dependabot.yml). The image runs as `node` (1000); a user of its own owns the secrets, so
+# that nothing on the host with the id 1000 can read them.
+x-app: &app
+  image: ghcr.io/bidulelabs/athlete-panel:v0.3.0@sha256:0160ff73e801d7a3e719558e44bfd1a4caf80e3b471fea50d4c06157105c7f0b
+  restart: unless-stopped
+  user: "10010:10010"
+  # Nothing is written outside /tmp, the Next.js cache and the backup directory.
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  environment: &environment
+    APP_ORIGIN: https://athlete.didelo.fr
+    COOKIE_SECURE: "true"
+    # The address comes from the header that Caddy writes, never from the client (stacks/athlete-panel/caddy/Caddyfile).
+    TRUST_PROXY_CLIENT_IP: "true"
+    # No home directory for the user 10010: pnpm and tsx write their caches below it.
+    HOME: /tmp
+  tmpfs: [/tmp]
+  volumes:
+    # A directory, not files: it holds env.sh, which builds the environment from the secret files.
+    - ./bin:/opt/athlete:ro
+  networks: [internal]
+  labels:
+    secrets.hash: ${SECRETS_HASH}
+
+services:
+  db:
+    # The official image, alpine variant, on the major the app is written for (ADR 0023). Dependabot bumps the tag and the
+    # digest together; a new major cannot read the data directory of the old one, so it is ignored there (dependabot.yml).
+    image: postgres:17.11-alpine@sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b
+    restart: unless-stopped
+    # The image's own user: initdb looks the running user up in /etc/passwd, so an id of my choosing would not start.
+    user: "70:70"
+    # The password files belong to the group 10010, which the app's services run as: the database reads the admin
+    # password through it.
+    group_add: ["10010"]
+    stop_grace_period: 30s
+    # The superuser's password is read at the first start only. Rotating it is an ALTER ROLE (the runbook).
+    environment:
+      POSTGRES_USER: athlete_panel
+      POSTGRES_DB: athlete_panel
+      POSTGRES_PASSWORD_FILE: /run/secrets/admin_db_password
+    command:
+      - postgres
+      - -c
+      - shared_buffers=64MB
+      - -c
+      - max_connections=50
+      - -c
+      - maintenance_work_mem=32MB
+      - -c
+      - max_wal_size=256MB
+      - -c
+      - min_wal_size=64MB
+      - -c
+      - random_page_cost=1.1
+      - -c
+      - log_min_duration_statement=1000
+      # An error does not log the statement: the one that sets a role's password would put it in the log.
+      - -c
+      - log_min_error_statement=panic
+    volumes:
+      - data:/var/lib/postgresql/data
+    # The socket and the temporary files are all the server writes outside the data volume.
+    tmpfs: [/tmp, /var/run/postgresql]
+    secrets: [admin_db_password]
+    networks: [internal]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 384m
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -h 127.0.0.1 -U athlete_panel -d athlete_panel -q']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  # Creates the runtime role, applies the migrations and refreshes the grants: the only service that holds the admin
+  # password besides the database. Ansible runs it before it starts the app, on every apply (it changes nothing when
+  # there is nothing to do).
+  migrate:
+    <<: *app
+    profiles: [tools]
+    restart: "no"
+    command: [sh, /opt/athlete/env.sh, admin, pnpm, db:migrate]
+    secrets: [admin_db_password, app_db_password, encryption_key]
+    mem_limit: 384m
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    <<: *app
+    command: [sh, /opt/athlete/env.sh, runtime, node, apps/web/.next/standalone/apps/web/server.js]
+    secrets: [app_db_password, encryption_key]
+    # The connection to Garmin is made from here too: the only outbound route besides the worker's.
+    networks: [internal, egress]
+    # Next.js keeps its build cache below .next, which the image owns as `node`.
+    tmpfs:
+      - /tmp
+      - /app/apps/web/.next/cache:uid=10010,gid=10010,mode=0700,size=64m
+    mem_limit: 384m
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      # The health route checks that the schema matches the release, so a web app that runs on an unmigrated database is
+      # not healthy. Inside the container only.
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+      start_interval: 3s
+
+  worker:
+    <<: *app
+    command: [sh, /opt/athlete/env.sh, runtime, node, dist/worker/index.js]
+    stop_grace_period: 40s
+    secrets: [app_db_password, encryption_key]
+    # Syncs with Garmin's API (personal.connectapi.garmin.com), so it needs a route out.
+    networks: [internal, egress]
+    mem_limit: 256m
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      # Fails when the worker has not reported in recently.
+      test: [CMD, sh, /opt/athlete/env.sh, runtime, pnpm, exec, tsx, scripts/operations.ts, worker-health]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 45s
+
+  # Takes a backup at start and then every day at 03:00 UTC, encrypted with a key of its own and kept in
+  # /var/backups/athlete-panel on the host (0700, owned by 10010). The archive is read back and authenticated before the
+  # app counts it as done. Seven daily and four weekly ones are kept.
+  backup:
+    <<: *app
+    environment:
+      <<: *environment
+      BACKUP_KEY_FILE: /run/secrets/backup_key
+      BACKUP_DESTINATION: /backups
+      BACKUP_HOUR_UTC: "3"
+      # Local, and the app checks that the directory is owner-only: it is not off-host storage (ADR 0023).
+      BACKUP_STORAGE_MODE: local
+    command: [sh, /opt/athlete/env.sh, runtime, pnpm, exec, tsx, scripts/operations.ts, backup-loop]
+    secrets: [app_db_password, encryption_key, backup_key]
+    volumes:
+      - ./bin:/opt/athlete:ro
+      - /var/backups/athlete-panel:/backups
+    # The archive is staged in /tmp before it is encrypted and written.
+    tmpfs:
+      - /tmp:size=256m
+    mem_limit: 512m
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      # Unhealthy when the newest archive is more than 26 hours old: a backup that fails shows here, the loop goes on.
+      test: [CMD-SHELL, "find /backups -maxdepth 1 -name '*.fgr' -mmin -1560 | grep -q ."]
+      interval: 5m
+      timeout: 10s
+      retries: 1
+      start_period: 10m
+
+  # Restores the newest backup into a database that lives for the length of the run, then drops it (the runbook).
+  restore-test:
+    <<: *app
+    profiles: [tools]
+    restart: "no"
+    environment:
+      <<: *environment
+      BACKUP_KEY_FILE: /run/secrets/backup_key
+    command: [sh, /opt/athlete/env.sh, admin, sh, /opt/athlete/restore-test.sh]
+    secrets: [admin_db_password, app_db_password, encryption_key, backup_key]
+    volumes:
+      - ./bin:/opt/athlete:ro
+      - /var/backups/athlete-panel:/backups:ro
+    tmpfs:
+      - /tmp:size=512m
+    mem_limit: 512m
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # The only service the edge reaches. It tells the app who the client is, and nothing else (ADR 0023): Traefik ends the
+  # TLS and applies the limits, the bouncer and the WAF before a request gets here.
+  caddy:
+    image: caddy:2.11.7-alpine@sha256:e70b164da81ef698b3ad19af799ea6086ce6d9e48ed4079eb9fe26f6fbf14ee5
+    restart: unless-stopped
+    user: "10010:10010"
+    volumes:
+      # A directory, like hello's nginx config: Ansible replaces files atomically, which a file mount would miss.
+      - ./caddy:/etc/caddy:ro
+    # Caddy looks for its data and config directories even with the admin API and ACME off.
+    tmpfs:
+      - /data:uid=10010,gid=10010,mode=0700,size=8m
+      - /config:uid=10010,gid=10010,mode=0700,size=8m
+    networks:
+      internal:
+      athlete-edge:
+        # Fixed too: after a reboot Docker hands out the free addresses of the network in order, and a Caddy that came up
+        # before Traefik would take the one Traefik has to have.
+        ipv4_address: 172.30.45.3
+    read_only: true
+    cap_drop: [ALL]
+    # The binary carries the file capability net_bind_service: with it missing from the bounding set the kernel refuses to
+    # run it, although Caddy listens on 8080 and binds nothing below 1024.
+    cap_add: [NET_BIND_SERVICE]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 64m
+    depends_on:
+      web:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, wget, --quiet, -O, /dev/null, "http://127.0.0.1:8080/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      # Traefik routes to a container only once it is healthy: checking every two seconds at the start keeps a
+      # recreation of Caddy from costing half a minute of 404.
+      start_period: 15s
+      start_interval: 2s
+    labels:
+      config.hash: ${CONFIG_HASH}
+      traefik.enable: "true"
+      # Caddy is not on edge: Traefik reaches it on the network it shares with it.
+      traefik.docker.network: athlete-edge
+      traefik.http.routers.athlete.rule: Host(`athlete.didelo.fr`)
+      traefik.http.routers.athlete.middlewares: athlete-headers
+      # The policy of the app's own Caddyfile. The page needs inline scripts and styles of Next.js, and it opens
+      # nothing but its own origin. This header replaces any Content-Security-Policy the app sends.
+      traefik.http.middlewares.athlete-headers.headers.contentsecuritypolicy: >-
+        default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; object-src 'none';
+        base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+      # Caddy adds `Via: 1.1 Caddy` to what the app answers: an empty value removes it, as the edge does for `Server`.
+      traefik.http.middlewares.athlete-headers.headers.customresponseheaders.Via: ""
+      # The login, which the app already limits per address: a stricter one at the edge, as for the game's sign-in
+      # (stacks/semaphore). The owner types the password a few times a day at most: 30 an hour after a burst of 10. A
+      # refused request lands on Traefik's 429 and never reaches the app.
+      traefik.http.routers.athlete-login.rule: Host(`athlete.didelo.fr`) && Path(`/api/auth/login`)
+      traefik.http.routers.athlete-login.priority: "110"
+      traefik.http.routers.athlete-login.middlewares: athlete-login-limit,athlete-login-body,athlete-headers
+      traefik.http.middlewares.athlete-login-limit.ratelimit.average: "30"
+      traefik.http.middlewares.athlete-login-limit.ratelimit.period: 1h
+      traefik.http.middlewares.athlete-login-limit.ratelimit.burst: "10"
+      # Per client IP, as the entry point's: without a criterion Traefik counts per request host.
+      traefik.http.middlewares.athlete-login-limit.ratelimit.sourcecriterion.ipstrategy.depth: "0"
+      # The body is {"password": "…"}: a password is a few dozen bytes.
+      traefik.http.middlewares.athlete-login-body.buffering.maxrequestbodybytes: "4096"
+      traefik.http.services.athlete.loadbalancer.server.port: "8080"
+
+secrets:
+  admin_db_password:
+    file: ./secrets/admin_db_password
+  app_db_password:
+    file: ./secrets/app_db_password
+  encryption_key:
+    file: ./secrets/encryption_key
+  backup_key:
+    file: ./secrets/backup_key
+
+volumes:
+  data:
+
+networks:
+  # Created here: no route to the outside, and nothing but the app's own services joins it. The database is on this one
+  # only.
+  internal:
+    internal: true
+  # The route out, for the web app and the worker (Garmin's API): the database, the backups and Caddy are not on it.
+  egress:
+  # Created by the Traefik stack, which the playbook starts first: Traefik and Caddy are the only two that join it.
+  athlete-edge:
+    external: true

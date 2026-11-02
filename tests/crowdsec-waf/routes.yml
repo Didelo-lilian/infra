@@ -1,4 +1,4 @@
-# Laid next to stacks/traefik/dynamic/crowdsec.yml by run.sh: two hosts behind the real bouncer, a stub behind each.
+# Laid next to stacks/traefik/dynamic/crowdsec.yml by run.sh: three hosts behind the real bouncer, a stub behind each.
 http:
   routers:
     game:
@@ -8,6 +8,11 @@ http:
       service: stub
     other:
       rule: Host(`other.didelo.fr`)
+      entryPoints: [web]
+      middlewares: [crowdsec@file]
+      service: stub
+    athlete:
+      rule: Host(`athlete.didelo.fr`)
       entryPoints: [web]
       middlewares: [crowdsec@file]
       service: stub

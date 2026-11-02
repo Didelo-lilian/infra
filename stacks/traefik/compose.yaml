@@ -51,7 +51,14 @@ services:
       - ./logs:/var/log/traefik
       # The whole directory, not single files: Ansible replaces files atomically, which a file mount would miss.
       - ./dynamic:/etc/traefik/dynamic:ro
-    networks: [edge, socket, crowdsec, metrics]
+    networks:
+      edge:
+      socket:
+      crowdsec:
+      metrics:
+      # A fixed address: the athlete-panel Caddy trusts this one and no other to tell it who the client is (ADR 0023).
+      athlete-edge:
+        ipv4_address: 172.30.45.2
     depends_on: [socket-proxy]
     read_only: true
     security_opt: [no-new-privileges:true]
@@ -87,5 +94,12 @@ networks:
   # Created here too: the public metrics dashboard is the only thing that joins it.
   metrics:
     name: metrics
+  # Created here too: only Traefik and the Caddy of the athlete-panel stack join it. The subnet is fixed so that Caddy
+  # can name Traefik's address in its configuration; a network that Docker numbers itself could change on a rebuild.
+  athlete-edge:
+    name: athlete-edge
+    ipam:
+      config:
+        - subnet: 172.30.45.0/28
   socket:
     internal: true
