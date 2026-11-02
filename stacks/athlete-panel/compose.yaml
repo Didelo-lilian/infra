@@ -63,6 +63,9 @@ services:
       - random_page_cost=1.1
       - -c
       - log_min_duration_statement=1000
+      # An error does not log the statement: the one that sets a role's password would put it in the log.
+      - -c
+      - log_min_error_statement=panic
     volumes:
       - data:/var/lib/postgresql/data
     # The socket and the temporary files are all the server writes outside the data volume.
@@ -206,7 +209,12 @@ services:
     tmpfs:
       - /data:uid=10010,gid=10010,mode=0700,size=8m
       - /config:uid=10010,gid=10010,mode=0700,size=8m
-    networks: [internal, athlete-edge]
+    networks:
+      internal:
+      athlete-edge:
+        # Fixed too: after a reboot Docker hands out the free addresses of the network in order, and a Caddy that came up
+        # before Traefik would take the one Traefik has to have.
+        ipv4_address: 172.30.45.3
     read_only: true
     cap_drop: [ALL]
     # The binary carries the file capability net_bind_service: with it missing from the bounding set the kernel refuses to

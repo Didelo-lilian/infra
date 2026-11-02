@@ -10,7 +10,7 @@ cd /srv/stacks/athlete-panel
 
 The app has one owner and no way to sign up. Until the owner exists nothing can log in, and the password is **not** in this repository, in SOPS or in any log: it is chosen once, at a prompt, by the owner.
 
-Pick a password of 12 to 256 characters and run:
+Pick a password of 12 to 256 characters and run this in an interactive session (`ssh didelo-vps`: the prompt needs a terminal):
 
 ```bash
 sudo docker compose --profile tools run --rm --no-deps migrate sh -c '
