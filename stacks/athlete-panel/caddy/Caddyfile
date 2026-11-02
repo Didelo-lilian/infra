@@ -1,0 +1,20 @@
+{
+	admin off
+	auto_https off
+	servers {
+		# Only Traefik may say who the client is: it is the one address trusted here, fixed on the athlete-edge network
+		# (stacks/traefik/compose.yaml). Strict reads X-Forwarded-For from the right and stops at the first address that
+		# is not trusted, so a value the client put in front of Traefik's own never counts.
+		trusted_proxies static 172.30.45.2/32
+		trusted_proxies_strict
+		client_ip_headers X-Forwarded-For
+	}
+}
+
+# Plain HTTP: Traefik ends the TLS and nothing else reaches this port.
+:8080 {
+	reverse_proxy web:3000 {
+		# Set, never added to: the app limits the login attempts per address and answers 503 without this header.
+		header_up X-Athlete-Panel-Client-IP {client_ip}
+	}
+}

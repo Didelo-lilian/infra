@@ -21,6 +21,8 @@
       - ../stacks/crowdsec/config.yaml.local
     hello_configs:
       - ../stacks/hello/nginx/default.conf
+    athlete_configs:
+      - ../stacks/athlete-panel/caddy/Caddyfile
     fw_bouncer:
       version: v0.0.36
       sha256: f86e4b72693549d99f40a9402abefb894108f047a3fbe6e72fada25ee17ce88b
@@ -318,6 +320,24 @@
         group: root
         mode: "0700"
 
+    - name: Create the athlete-panel secrets directory
+      ansible.builtin.file:
+        path: /srv/stacks/athlete-panel/secrets
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
+    # Owned by 10010, the user the backup container runs as: the app refuses a backup directory that another user could
+    # read or write (stacks/athlete-panel, ADR 0023).
+    - name: Create the athlete-panel backup directory
+      ansible.builtin.file:
+        path: /var/backups/athlete-panel
+        state: directory
+        owner: "10010"
+        group: "10010"
+        mode: "0700"
+
     # Group 10002 is the one the Redis container runs as: nothing else on the host has it.
     # shortcut: the dry run has no age key, so the password is only read and written for real.
     # A rotation does not show in the diff: run the workflow by hand with `force`.
@@ -427,6 +447,65 @@
         - { provider: github, part: client-secret, key: GITHUB_CLIENT_SECRET }
         - { provider: google, part: client-id, key: GOOGLE_CLIENT_ID }
         - { provider: google, part: client-secret, key: GOOGLE_CLIENT_SECRET }
+
+    # Group 10010 is the one the app's containers run as, and the one the database reads the admin password through
+    # (`group_add`): nothing else on the host has it. The backup key is readable by its owner only, which is what the app
+    # demands of it. The passwords and the keys are generated once (docs/runbooks/athlete-panel.md): they are not the
+    # owner's login password, which is never stored here. The tasks are not a loop: Ansible templates a loop before it
+    # evaluates `when`, which would run the SOPS lookup in the dry run too.
+    # shortcut: the dry run has no age key, so the secrets are only read and written for real.
+    # A rotation does not show in the diff: run the workflow by hand with `force`.
+    - name: Store the athlete-panel secrets
+      when: not ansible_check_mode
+      no_log: true
+      vars:
+        secrets: "{{ lookup('community.sops.sops', playbook_dir ~ '/../secrets/production.sops.yaml') | from_yaml }}"
+        config_hash: "{{ query('ansible.builtin.file', *athlete_configs) | join | hash('sha1') }}"
+      block:
+        - name: Write the athlete-panel admin database password
+          ansible.builtin.copy:
+            dest: /srv/stacks/athlete-panel/secrets/admin_db_password
+            content: "{{ secrets.ATHLETE_ADMIN_DB_PASSWORD }}"
+            owner: root
+            group: "10010"
+            mode: "0440"
+
+        - name: Write the athlete-panel runtime database password
+          ansible.builtin.copy:
+            dest: /srv/stacks/athlete-panel/secrets/app_db_password
+            content: "{{ secrets.ATHLETE_APP_DB_PASSWORD }}"
+            owner: root
+            group: "10010"
+            mode: "0440"
+
+        - name: Write the athlete-panel encryption key
+          ansible.builtin.copy:
+            dest: /srv/stacks/athlete-panel/secrets/encryption_key
+            content: "{{ secrets.ATHLETE_ENCRYPTION_KEY }}"
+            owner: root
+            group: "10010"
+            mode: "0440"
+
+        - name: Write the athlete-panel backup key
+          ansible.builtin.copy:
+            dest: /srv/stacks/athlete-panel/secrets/backup_key
+            content: "{{ secrets.ATHLETE_BACKUP_KEY }}"
+            owner: "10010"
+            group: "10010"
+            mode: "0400"
+
+        # The app reads its secrets at start only and Compose does not see a bind-mounted file change: a hash in a label
+        # recreates web, worker and backup when the runtime password or a key changes. The admin password is not in it:
+        # only the database reads it, at its first start.
+        - name: Write the athlete-panel settings
+          ansible.builtin.copy:
+            dest: /srv/stacks/athlete-panel/.env
+            content: |
+              CONFIG_HASH={{ config_hash }}
+              SECRETS_HASH={{ (secrets.ATHLETE_APP_DB_PASSWORD ~ secrets.ATHLETE_ENCRYPTION_KEY ~ secrets.ATHLETE_BACKUP_KEY) | hash('sha256') }}
+            owner: root
+            group: root
+            mode: "0600"
 
     - name: Write the monitoring settings
       ansible.builtin.copy:
@@ -565,6 +644,47 @@
     - name: Start the backend
       community.docker.docker_compose_v2:
         project_src: /srv/stacks/semaphore
+        remove_orphans: true
+      # In --check mode the stack is not really copied yet.
+      ignore_errors: "{{ ansible_check_mode }}"
+
+    # athlete-panel (ADR 0023): the database first, then the migrations on the image that is about to run, then the rest.
+    # The web app is not healthy on a schema that is not its release's, and the worker fails on it: a start of the whole
+    # stack at once would leave both down until a later migration. Stopping nothing before the migrations is deliberate:
+    # the few seconds between them and the recreation of web and worker are the whole outage of an update.
+    - name: Start the athlete-panel database
+      community.docker.docker_compose_v2:
+        project_src: /srv/stacks/athlete-panel
+        services: [db]
+        remove_orphans: true
+      # In --check mode the stack is not really copied yet.
+      ignore_errors: "{{ ansible_check_mode }}"
+
+    - name: Wait for the athlete-panel database to accept connections
+      when: not ansible_check_mode
+      ansible.builtin.command: docker exec athlete-panel-db-1 pg_isready -h 127.0.0.1 -U athlete_panel -d athlete_panel -q
+      register: athlete_db_ready
+      until: athlete_db_ready.rc == 0
+      retries: 30
+      delay: 2
+      changed_when: false
+
+    # Creates the runtime role, applies what is new and refreshes the grants: it prints one line and changes nothing when
+    # there is nothing to do. It reads the passwords from the files, so there is nothing to hide.
+    - name: Migrate the athlete-panel database
+      when: not ansible_check_mode
+      community.docker.docker_compose_v2_run:
+        project_src: /srv/stacks/athlete-panel
+        profiles: [tools]
+        service: migrate
+        cleanup: true
+      register: athlete_migration
+      changed_when: false
+      failed_when: athlete_migration.rc != 0
+
+    - name: Start athlete-panel
+      community.docker.docker_compose_v2:
+        project_src: /srv/stacks/athlete-panel
         remove_orphans: true
       # In --check mode the stack is not really copied yet.
       ignore_errors: "{{ ansible_check_mode }}"
