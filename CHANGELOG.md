@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.5.0](https://github.com/Didelo-lilian/infra/compare/v0.4.0...v0.5.0) (2026-11-02)
+
+
+### Features
+
+* **athlete-panel:** host athlete.didelo.fr behind the edge ([6264859](https://github.com/Didelo-lilian/infra/commit/626485963a87c054cedc8af8469766649d630fee))
+
+
+### Bug fixes
+
+* **test:** keep the image of the deploy-app test through a tag, not its id ([1ec8ed7](https://github.com/Didelo-lilian/infra/commit/1ec8ed72ff12a7a47fc0891fdc7ae8c73069f0ce))
+
 ## [0.4.0](https://github.com/Didelo-lilian/infra/compare/v0.3.0...v0.4.0) (2026-11-01)
 
 
