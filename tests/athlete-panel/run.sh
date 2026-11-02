@@ -83,6 +83,17 @@ from() { # address, curl options...
 # curl speaks plain HTTP when it is given no scheme: the test's own Docker network, nothing leaves the machine.
 edge=$traefik_ip
 host=(-H 'Host: athlete.didelo.fr')
+# Traefik applies what it sees every two seconds at most, and routes to a container once it is healthy: five seconds of
+# 200 in a row is the route of the container that runs now, not a stale one left by the container that just went.
+routed() { # path
+  local streak=0
+  for _ in $(seq 120); do
+    if [[ "$(from 172.30.45.12 -o /dev/null -w '%{http_code}' "${host[@]}" "$edge$1")" == 200 ]]; then streak=$((streak + 1)); else streak=0; fi
+    [[ $streak -ge 5 ]] && return 0
+    sleep 1
+  done
+  return 1
+}
 healthy() { # service, seconds
   for _ in $(seq "$2"); do
     [[ "$(docker inspect -f '{{.State.Health.Status}}' "$(real ps -q "$1")" 2>/dev/null)" == healthy ]] && return 0
@@ -99,6 +110,7 @@ for service in db web worker backup caddy; do
   check "$service is healthy" "$(ok healthy "$service" 300)"
 done
 
+routed /api/health || true
 body=$(from 172.30.45.12 "${host[@]}" "$edge/api/health")
 check "the health route answers through Traefik and Caddy" "$([[ "$body" == '{"status":"ready"}' ]] && echo 0 || echo 1)"
 
@@ -154,11 +166,8 @@ check "the throwaway database is gone" \
 real --profile tools down --volumes --remove-orphans >/dev/null 2>&1
 
 echo "-- Caddy and the edge in front of a stub"
-stub up -d --quiet-pull --no-deps web caddy >/dev/null 2>&1
-for _ in $(seq 60); do
-  [[ "$(from 172.30.45.12 -o /dev/null -w '%{http_code}' "${host[@]}" "$edge/")" == 200 ]] && break
-  sleep 1
-done
+stub up -d --wait --quiet-pull --no-deps web caddy >/dev/null 2>&1
+routed / || true
 caddy_ip=$(docker inspect -f '{{(index .NetworkSettings.Networks "aptest-edge").IPAddress}}' "$(stub ps -q caddy)")
 check "Caddy has the fixed address of the compose file, next to Traefik's" \
   "$([[ "$caddy_ip" == "$(sed -n 's/^[[:space:]]*ipv4_address: //p' "$base")" ]] && echo 0 || echo 1)"
