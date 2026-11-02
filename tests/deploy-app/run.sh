@@ -34,12 +34,18 @@ docker run -d --name deploytest-traefik --network deploytest-edge -p 127.0.0.1:1
   --entrypoints.web.address=:80 >/dev/null
 
 # Pushing moves the registry's tag, not the server's: the tag of this Docker, the server's, is put back where it was.
+# The image is kept under a tag of its own while `main` moves: an image nothing refers to is not kept by every Docker.
 publish() { # mode version
-  local kept
-  kept=$(docker image inspect -f '{{.Id}}' localhost:5055/deploytest:main 2>/dev/null || true)
-  docker build -q --build-arg "MODE=$1" --build-arg "VERSION=$2" -t localhost:5055/deploytest:main tests/deploy-app >/dev/null
-  docker push -q localhost:5055/deploytest:main >/dev/null
-  if [[ -n "$kept" ]]; then docker tag "$kept" localhost:5055/deploytest:main; else docker rmi localhost:5055/deploytest:main >/dev/null; fi
+  local image=localhost:5055/deploytest kept=
+  docker tag "$image:main" "$image:kept" 2>/dev/null && kept=1
+  docker build -q --build-arg "MODE=$1" --build-arg "VERSION=$2" -t "$image:main" tests/deploy-app >/dev/null
+  docker push -q "$image:main" >/dev/null
+  if [[ -n "$kept" ]]; then
+    docker tag "$image:kept" "$image:main"
+    docker rmi "$image:kept" >/dev/null
+  else
+    docker rmi "$image:main" >/dev/null
+  fi
 }
 ids() { $compose ps -q ds | sort | tr '\n' ' '; }
 version_of() { docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$1" | sed -n 's/^VERSION=//p'; }
