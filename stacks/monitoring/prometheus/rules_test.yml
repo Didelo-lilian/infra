@@ -159,3 +159,29 @@ tests:
             exp_annotations:
               summary: "A replica of the game's backend is missing"
               description: "Fewer than two backend containers for 5 minutes: players are served by 1."
+
+  - interval: 1m
+    input_series:
+      # Five containers; the worker disappears at minute 12.
+      - series: 'container_last_seen{name="athlete-panel-db-1"}'
+        values: "1+0x40"
+      - series: 'container_last_seen{name="athlete-panel-web-1"}'
+        values: "1+0x40"
+      - series: 'container_last_seen{name="athlete-panel-worker-1"}'
+        values: "1+0x11 stale"
+      - series: 'container_last_seen{name="athlete-panel-backup-1"}'
+        values: "1+0x40"
+      - series: 'container_last_seen{name="athlete-panel-caddy-1"}'
+        values: "1+0x40"
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: AthleteContainerMissing
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: AthleteContainerMissing
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: "A container of athlete-panel is missing"
+              description: "Fewer than five athlete-panel containers (database, web, worker, backup, Caddy) for 5 minutes: 4 run."

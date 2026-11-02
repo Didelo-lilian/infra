@@ -54,6 +54,8 @@ scrape_configs:
           - https://hello.didelo.fr
           - https://ds.didelo.fr
           - https://play.didelo.fr
+          # The health route of the app, which checks its database: a web app that runs on a schema it does not know is down.
+          - https://athlete.didelo.fr/api/health
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target

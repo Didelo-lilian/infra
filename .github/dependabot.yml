@@ -28,6 +28,10 @@ updates:
       prefix: chore
       include: scope
     groups:
+      # The app's own pull request: an update runs migrations on the owner's data, so it is read and applied alone,
+      # after a backup (docs/runbooks/athlete-panel.md). The first group that matches wins.
+      athlete-panel:
+        patterns: ["ghcr.io/bidulelabs/athlete-panel"]
       images:
         patterns: ["*"]
     ignore:
