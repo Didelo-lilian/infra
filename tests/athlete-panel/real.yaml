@@ -1,0 +1,36 @@
+# Laid over stacks/athlete-panel/compose.yaml by run.sh for the run of the real stack: the same services and images, with
+# the secrets and the backup directory of the test, and the network that a throwaway Traefik shares with Caddy.
+# Relative paths below resolve in stacks/athlete-panel, where the first file is.
+x-test: &test
+  # The image is amd64 only: a no-op on a CI runner, an emulation on an Apple laptop.
+  platform: linux/amd64
+services:
+  migrate: *test
+  web: *test
+  worker: *test
+  backup:
+    <<: *test
+    volumes: !override
+      - ./bin:/opt/athlete:ro
+      - ${TEST_DIR}/backups:/backups
+  restore-test:
+    <<: *test
+    volumes: !override
+      - ./bin:/opt/athlete:ro
+      - ${TEST_DIR}/backups:/backups:ro
+  caddy:
+    labels:
+      traefik.docker.network: aptest-edge
+secrets:
+  admin_db_password:
+    file: ${TEST_DIR}/secrets/admin_db_password
+  app_db_password:
+    file: ${TEST_DIR}/secrets/app_db_password
+  encryption_key:
+    file: ${TEST_DIR}/secrets/encryption_key
+  backup_key:
+    file: ${TEST_DIR}/secrets/backup_key
+networks:
+  athlete-edge:
+    external: true
+    name: aptest-edge

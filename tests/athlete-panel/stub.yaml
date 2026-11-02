@@ -1,0 +1,35 @@
+# Laid over stacks/athlete-panel/compose.yaml by run.sh for the run of Caddy alone: the app becomes a stub that echoes
+# the headers it receives, so that the test can read which client address Caddy tells the app.
+services:
+  web:
+    image: traefik/whoami:v1.11
+    pull_policy: missing
+    hostname: web
+    command: [--port, "3000"]
+    environment: !reset {}
+    secrets: !reset []
+    volumes: !reset []
+    tmpfs: !reset []
+    healthcheck:
+      disable: true
+    networks: !override [internal]
+  caddy:
+    depends_on: !override
+      web:
+        condition: service_started
+    labels:
+      traefik.docker.network: aptest-edge
+# The other services are not started, but the project must stay valid.
+secrets:
+  admin_db_password:
+    file: ${TEST_DIR}/secrets/admin_db_password
+  app_db_password:
+    file: ${TEST_DIR}/secrets/app_db_password
+  encryption_key:
+    file: ${TEST_DIR}/secrets/encryption_key
+  backup_key:
+    file: ${TEST_DIR}/secrets/backup_key
+networks:
+  athlete-edge:
+    external: true
+    name: aptest-edge

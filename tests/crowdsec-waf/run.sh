@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Checks which methods the WAF of play.didelo.fr lets through (ADR 0013): the real CrowdSec stack (collections,
 # acquisition, in-band CRS config) behind the real bouncer middleware of Traefik, with a stub in place of the game.
-# First without the hook of crs-inband.yaml, to see the rule block PUT and DELETE, then with it.
+# First without the hook of crs-inband.yaml, to see the rule block PUT and DELETE, then with it. Then the requests of
+# athlete.didelo.fr (ADR 0023): its app only uses GET and POST, so it has no exemption, and what it posts must pass.
 # Needs Docker, curl and nothing else; takes about a minute.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
@@ -117,6 +118,24 @@ expect "a SQL injection in the body of a PUT stays blocked" PUT /api/me 403 -H '
 expect "a script in the body of a PUT stays blocked" PUT /api/me 403 -H 'Content-Type: application/json' -d '{"name":"<script>alert(1)</script>"}'
 expect "a SQL injection in the query of a DELETE stays blocked" DELETE "/api/auth/account?id=1'%20OR%20'1'='1" 403
 expect "an exposed file stays blocked" GET /.env 403
+
+echo "-- athlete.didelo.fr: GET and POST only, no exemption"
+export host=athlete.didelo.fr
+json=(-H 'Content-Type: application/json')
+expect "a page passes" GET /login 200
+expect "the health check passes" GET /api/health 200
+expect "the login passes" POST /api/auth/login 200 "${json[@]}" -d '{"password":"correct horse battery staple 9!"}'
+expect "a Garmin key passes" POST /api/plugins/garmin/configure 200 "${json[@]}" \
+  -d '{"key":"11111111-1111-4111-8111-111111111111","idempotencyKey":"22222222-2222-4222-8222-222222222222"}'
+# Free text, as an athlete writes it: quotes, brackets, semicolons, comparison signs, slashes, SQL words.
+expect "a workout with a title and notes passes" POST /api/plugins/training/mutate 200 "${json[@]}" -d '{"commands":[{"type":"workout.create","values":{"title":"Tempo 3 x 10'"'"' @ threshold (RPE 7) / 2'"'"' rest","notes":"Legs felt heavy; knee OK - did not skip the drills. Drop to Z2 if HR > 150 or pace < 5:00/km. Select a flat route, union with the club run on Sunday."}}]}'
+expect "a note with double quotes and an ampersand passes" POST /api/plugins/training/mutate 200 "${json[@]}" -d '{"commands":[{"type":"workout.update","values":{"notes":"Coach said \"easy day\" & recovery; 6 x 100 m strides (walk back)."}}]}'
+expect "a note with a script tag stays blocked" POST /api/plugins/training/mutate 403 "${json[@]}" -d '{"commands":[{"values":{"notes":"<script>alert(1)</script>"}}]}'
+expect "a SQL injection in a note stays blocked" POST /api/plugins/training/mutate 403 "${json[@]}" -d '{"commands":[{"values":{"notes":"x'"'"' OR '"'"'1'"'"'='"'"'1"}}]}'
+expect "a PUT stays blocked: the app does not use it" PUT /api/workspace 403
+expect "a PATCH stays blocked: the app does not use it" PATCH /api/workspace 403
+expect "a DELETE stays blocked: the app does not use it" DELETE /api/workspace 403
+unset host
 
 if [[ $failures -gt 0 ]]; then
   echo "$failures check(s) failed" >&2
