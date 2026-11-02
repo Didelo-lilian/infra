@@ -80,7 +80,8 @@ from() { # address, curl options...
   shift
   docker exec "aptest-client-${address##*.}" curl -s -m 20 "$@"
 }
-edge=http://$traefik_ip
+# curl speaks plain HTTP when it is given no scheme: the test's own Docker network, nothing leaves the machine.
+edge=$traefik_ip
 host=(-H 'Host: athlete.didelo.fr')
 healthy() { # service, seconds
   for _ in $(seq "$2"); do
@@ -137,11 +138,13 @@ check "no password is in the output of docker inspect" "$([[ $leaks == 0 ]] && e
 check "the web app has no capability and a read-only file system" \
   "$([[ "$(docker inspect -f '{{.HostConfig.ReadonlyRootfs}} {{.HostConfig.CapDrop}}' "$(real ps -q web)")" == 'true [ALL]' ]] && echo 0 || echo 1)"
 
+# The directory belongs to the user 10010 and is 0700: from the host, only a container sees into it.
+archives() { real exec -T backup find /backups -maxdepth 1 -name '*.fgr' | grep -q .; }
 for _ in $(seq 120); do
-  compgen -G "$tmp/backups/*.fgr" >/dev/null && break
+  archives && break
   sleep 1
 done
-check "the first backup is written" "$(ok compgen -G "$tmp/backups/*.fgr")"
+check "the first backup is written" "$(ok archives)"
 restore=$(real --profile tools run --rm --no-deps -T restore-test 2>&1 || true)
 check "the backup authenticates and restores into a throwaway database" "$([[ "$restore" == *"restore test passed"* ]] && echo 0 || echo 1)"
 [[ "$restore" == *"restore test passed"* ]] || echo "$restore" | tail -15
@@ -157,13 +160,15 @@ for _ in $(seq 60); do
   sleep 1
 done
 caddy_ip=$(docker inspect -f '{{(index .NetworkSettings.Networks "aptest-edge").IPAddress}}' "$(stub ps -q caddy)")
+check "Caddy has the fixed address of the compose file, next to Traefik's" \
+  "$([[ "$caddy_ip" == "$(sed -n 's/^[[:space:]]*ipv4_address: //p' "$base")" ]] && echo 0 || echo 1)"
 told() { tr '[:upper:]' '[:lower:]' | sed -n 's/^x-athlete-panel-client-ip: //p' | tr -d '\r'; } # what the stub received
 
 told_through_edge=$(from 172.30.45.12 "${host[@]}" "$edge/" | told)
 check "through Traefik the app is told the address of the client" "$([[ "$told_through_edge" == 172.30.45.12 ]] && echo 0 || echo 1)"
 told_through_edge=$(from 172.30.45.12 "${host[@]}" -H 'X-Forwarded-For: 6.6.6.6, 8.8.8.8' -H 'X-Athlete-Panel-Client-IP: 7.7.7.7' "$edge/" | told)
 check "a client cannot choose it with either header, through Traefik" "$([[ "$told_through_edge" == 172.30.45.12 ]] && echo 0 || echo 1)"
-told_direct=$(from 172.30.45.13 -H 'X-Forwarded-For: 6.6.6.6' -H 'X-Athlete-Panel-Client-IP: 7.7.7.7' "http://$caddy_ip:8080/" | told)
+told_direct=$(from 172.30.45.13 -H 'X-Forwarded-For: 6.6.6.6' -H 'X-Athlete-Panel-Client-IP: 7.7.7.7' "$caddy_ip:8080/" | told)
 check "a client that reaches Caddy without Traefik cannot choose it either" "$([[ "$told_direct" == 172.30.45.13 ]] && echo 0 || echo 1)"
 other_told=$(from 172.30.45.13 "${host[@]}" "$edge/" | told)
 check "another address is told its own" "$([[ "$other_told" == 172.30.45.13 ]] && echo 0 || echo 1)"
@@ -186,6 +191,10 @@ check "a login body over 4 KiB is refused" \
   "$([[ "$(from 172.30.45.13 -o /dev/null -w '%{http_code}' -X POST "${host[@]}" -d "{\"password\":\"$big\"}" "$edge/api/auth/login")" == 413 ]] && echo 0 || echo 1)"
 
 if [[ $failures -gt 0 ]]; then
+  echo "-- what was running, and what the edge answers" >&2
+  docker ps -a --filter name=aptest --format '{{.Names}} {{.Status}}' >&2
+  docker logs --tail 20 aptest-traefik >&2 2>&1 || true
+  from 172.30.45.12 -i "${host[@]}" "$edge/" 2>&1 | head -15 >&2 || true
   echo "$failures check(s) failed" >&2
   exit 1
 fi
