@@ -10,7 +10,7 @@ x-hardened: &hardened
 services:
   prometheus:
     <<: *hardened
-    image: prom/prometheus:v3.15.1
+    image: prom/prometheus:v3.16.0
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.path=/prometheus
@@ -66,7 +66,7 @@ services:
 
   alertmanager:
     <<: *hardened
-    image: prom/alertmanager:v0.34.1
+    image: prom/alertmanager:v0.34.2
     command:
       - --config.file=/etc/alertmanager/alertmanager.yml
       - --storage.path=/alertmanager
@@ -86,7 +86,7 @@ services:
   # which creates that public dashboard through the API, Grafana cannot provision it from a file.
   grafana:
     <<: *hardened
-    image: grafana/grafana:13.2.4
+    image: grafana/grafana:13.3.0
     ports:
       - 127.0.0.1:3000:3000
     environment:
