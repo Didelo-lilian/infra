@@ -10,13 +10,15 @@ reviews:
     max_merge_risk: low
   path_instructions:
     - path: "stacks/**"
-      instructions: "Flag services that are not read-only, add capabilities, lack a memory limit or a health check. Secrets are files provided through SOPS and Ansible, never plain text in compose files, command lines or docker inspect. A change to stacks, DNS, the network or the deployment CI must update the Mermaid diagram in the README Architecture section in the same PR."
+      instructions: "Flag services that are not read-only, add capabilities, lack a memory limit or a health check. Secrets are files provided through SOPS and Ansible, never plain text in compose files, command lines or docker inspect."
     - path: "secrets/**"
       instructions: "Every value must stay SOPS-encrypted; flag any plain text value."
     - path: "ansible/**"
-      instructions: "The PR description must say what the dry-run will change; flag anything that recreates a container or changes something the PR does not announce. If it changes what runs, the Mermaid diagram in the README Architecture section must be updated in the same PR."
+      instructions: "The PR description must say what the dry-run will change; flag anything that recreates a container or changes something the PR does not announce."
     - path: ".github/workflows/**"
       instructions: "Workflows triggered by pull requests must run on GitHub-hosted runners; only deployments from main may use self-hosted runners."
+    - path: "**"
+      instructions: "If the PR changes DNS, the server, stacks, the network or the deployment CI, check that the Mermaid diagram in the README Architecture section was updated in the same PR."
 knowledge_base:
   linked_repositories:
     - repository: Didelo-lilian/semaphore
