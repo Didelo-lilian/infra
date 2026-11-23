@@ -1,0 +1,27 @@
+reviews:
+  poem: false
+  high_level_summary_in_walkthrough: true
+  auto_review:
+    auto_pause_after_reviewed_commits: 0
+    ignore_title_keywords:
+      - "chore(main): release"
+  auto_approvals:
+    enabled: true
+    max_merge_risk: low
+  path_instructions:
+    - path: "stacks/**"
+      instructions: "Flag services that are not read-only, add capabilities, lack a memory limit or a health check. Secrets are files provided through SOPS and Ansible, never plain text in compose files, command lines or docker inspect."
+    - path: "secrets/**"
+      instructions: "Every value must stay SOPS-encrypted; flag any plain text value."
+    - path: "ansible/**"
+      instructions: "The PR description must say what the dry-run will change; flag anything that recreates a container or changes something the PR does not announce."
+    - path: ".github/workflows/**"
+      instructions: "Workflows triggered by pull requests must run on GitHub-hosted runners; only deployments from main may use self-hosted runners."
+    - path: "**"
+      instructions: "If the PR changes DNS, the server, stacks, the network or the deployment CI, check that the Mermaid diagram in the README Architecture section was updated in the same PR."
+knowledge_base:
+  linked_repositories:
+    - repository: Didelo-lilian/semaphore
+      instructions: "The game these stacks deploy. Flag infra changes that break what the app expects: image names, environment variables, ports, health checks, routes."
+    - repository: Didelo-lilian/.github
+      instructions: "Shared workflows (pr-conventions.yml, release.yml) called by this repo. Flag changes to the inputs or names this repo relies on."
