@@ -4,7 +4,7 @@ name: crowdsec
 # CrowdSec only reads it at startup, and a single-file mount does not follow Ansible replacing the file.
 services:
   crowdsec:
-    image: crowdsecurity/crowdsec:v1.8.1
+    image: crowdsecurity/crowdsec:v1.8.2
     restart: unless-stopped
     environment:
       # Parsers and scenarios for Traefik access logs and for sshd. The hub is downloaded at first start.
