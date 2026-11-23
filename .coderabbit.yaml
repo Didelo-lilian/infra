@@ -8,6 +8,7 @@ reviews:
   auto_approvals:
     enabled: true
     max_merge_risk: low
+    min_blocking_severity: major
   path_instructions:
     - path: "stacks/**"
       instructions: "Flag services that are not read-only, add capabilities, lack a memory limit or a health check. Secrets are files provided through SOPS and Ansible, never plain text in compose files, command lines or docker inspect."
