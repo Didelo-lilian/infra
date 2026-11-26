@@ -8,7 +8,7 @@ name: athlete-panel
 # in a pull request of its own (dependabot.yml). The image runs as `node` (1000); a user of its own owns the secrets, so
 # that nothing on the host with the id 1000 can read them.
 x-app: &app
-  image: ghcr.io/bidulelabs/athlete-panel:v0.3.0@sha256:0160ff73e801d7a3e719558e44bfd1a4caf80e3b471fea50d4c06157105c7f0b
+  image: ghcr.io/bidulelabs/athlete-panel:v0.5.0@sha256:eefd0b910000be1c3365c2fc2a974fea51768944d7f5d59545885eeb1accf5a3
   restart: unless-stopped
   user: "10010:10010"
   # Nothing is written outside /tmp, the Next.js cache and the backup directory.
@@ -34,7 +34,7 @@ services:
   db:
     # The official image, alpine variant, on the major the app is written for (ADR 0023). Dependabot bumps the tag and the
     # digest together; a new major cannot read the data directory of the old one, so it is ignored there (dependabot.yml).
-    image: postgres:17.11-alpine@sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b
+    image: postgres:17.12-alpine@sha256:f9cf3e1f0066f0eb0c48707d864f0ac5941e9ff454a072077d97a4d278d07d73
     restart: unless-stopped
     # The image's own user: initdb looks the running user up in /etc/passwd, so an id of my choosing would not start.
     user: "70:70"
@@ -199,7 +199,7 @@ services:
   # The only service the edge reaches. It tells the app who the client is, and nothing else (ADR 0023): Traefik ends the
   # TLS and applies the limits, the bouncer and the WAF before a request gets here.
   caddy:
-    image: caddy:2.11.7-alpine@sha256:e70b164da81ef698b3ad19af799ea6086ce6d9e48ed4079eb9fe26f6fbf14ee5
+    image: caddy:2.11.9-alpine@sha256:003a97808e781aa9f7e75cc2f43d34d461099031faf5e20faefb9f61126836f0
     restart: unless-stopped
     user: "10010:10010"
     volumes:
