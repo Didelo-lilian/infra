@@ -37,7 +37,7 @@ services:
 
   node-exporter:
     <<: *hardened
-    image: prom/node-exporter:v1.12.1
+    image: prom/node-exporter:v1.13.1
     command: [--path.rootfs=/host]
     # shortcut: not on the host network, so no per-interface network metrics, upgrade if they are needed.
     pid: host
